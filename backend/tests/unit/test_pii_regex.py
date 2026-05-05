@@ -152,3 +152,13 @@ def test_account_keyword_prefix_preserved():
 
 def test_account_hyphen_keyword_prefix_preserved():
     assert mask("입금계좌 110-234-567890") == "입금계좌 [ACCOUNT]"
+
+
+def test_mask_account_tongzhang_plain():
+    # 통장 keyword should trigger plain-digit account masking too
+    assert mask("통장 12345678901") == "통장 [ACCOUNT]"
+
+
+def test_mask_account_bank_plain():
+    # 은행 keyword should trigger plain-digit account masking
+    assert mask("은행 12345678901234") == "은행 [ACCOUNT]"

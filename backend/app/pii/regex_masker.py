@@ -35,7 +35,7 @@ _ACCOUNT_HYPHEN = re.compile(
 # Plain digit account: 10–14 digits preceded by a 계좌 keyword.
 # Use a capturing group for the keyword prefix; the replacement re-inserts it.
 _ACCOUNT_KEYWORD = re.compile(
-    r"((?:계좌번호|입금계좌|수납계좌|계좌)[번호\s:：]*)\s*(\d{10,14})"
+    r"((?:계좌번호|입금계좌|수납계좌|통장|은행|계좌)[번호\s:：]*)\s*(\d{10,14})"
 )
 
 _PHONE = re.compile(
