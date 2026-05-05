@@ -1,9 +1,9 @@
 """Pass-1 PII masker: regex substitution for structured Korean PII patterns.
 
 Ordering is load-bearing:
-1. JUMIN  — 13-digit with/without hyphen; must run before generic digit runs
-2. CARD   — 16-digit (4-4-4-4); must run before ACCOUNT (10-14 digit)
-3. ACCOUNT — bank account formats (hyphenated or keyword-gated plain digits)
+1. JUMIN  — 13-digit hyphenated; must run before generic digit runs
+2. CARD   — 16-digit (4-4-4-4 delimited, or plain with card keyword)
+3. ACCOUNT — bank account formats (keyword-gated hyphenated or plain digits)
 4. PHONE  — international / domestic / no-hyphen mobile
 5. EMAIL  — RFC-ish local@domain
 6. MONEY  — ₩/원/만원/억원
@@ -13,20 +13,23 @@ import re
 
 # ── compiled patterns ──────────────────────────────────────────────────────────
 
+# Hyphenated only: no-hyphen form over-matches ISBNs/barcodes/product codes.
 _JUMIN = re.compile(
     r"\b\d{6}-[1-9]\d{6}\b"          # hyphenated: 901231-1234567 (covers 외국인 5-8)
-    r"|\b\d{6}[1-9]\d{6}\b",         # no hyphen:  9012311234567
 )
 
-_CARD = re.compile(
+# 4-4-4-4 delimited form is precise; plain 16-digit is gated by card keyword.
+_CARD_DELIMITED = re.compile(
     r"\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b"  # 4-4-4-4 (hyphen or space)
-    r"|\b\d{16}\b",                               # plain 16 digits
+)
+_CARD_PLAIN = re.compile(
+    r"(?:카드|신용|체크)[번호\s:：]*(\d{16})\b"   # keyword-gated plain 16 digits
 )
 
-# Hyphenated bank account formats: XX(X)-XX(X)-XXXXXX(XX)
+# Hyphenated bank account formats: keyword-gated to avoid project/document numbers.
 # Covers 국민(XXX-XX-XXXXXX), 신한(XXX-XXX-XXXXXX), 농협(XXXX-XX-XXXXXX), etc.
 _ACCOUNT_HYPHEN = re.compile(
-    r"\b\d{3,4}-\d{2,3}-\d{6,8}\b"
+    r"((?:계좌번호|입금계좌|수납계좌|통장|은행|계좌)[번호\s:：]*)\s*(\d{3,4}-\d{2,3}-\d{6,8})\b"
 )
 
 # Plain digit account: 10–14 digits preceded by a 계좌 keyword.
@@ -52,16 +55,23 @@ _MONEY = re.compile(
 
 # ── ordered pipeline ──────────────────────────────────────────────────────────
 
-def _account_keyword_repl(m: re.Match) -> str:
+def _keyword_account_repl(m: re.Match) -> str:
     return m.group(1) + "[ACCOUNT]"
+
+
+def _card_plain_repl(m: re.Match) -> str:
+    # Preserve the keyword prefix; replace only the 16-digit number.
+    full = m.group(0)
+    return full[: full.rfind(m.group(1))] + "[CARD]"
 
 
 def mask(text: str) -> str:
     """Replace all structured PII in *text* with opaque tokens."""
     text = _JUMIN.sub("[JUMIN]", text)
-    text = _CARD.sub("[CARD]", text)
-    text = _ACCOUNT_HYPHEN.sub("[ACCOUNT]", text)
-    text = _ACCOUNT_KEYWORD.sub(_account_keyword_repl, text)
+    text = _CARD_DELIMITED.sub("[CARD]", text)
+    text = _CARD_PLAIN.sub(_card_plain_repl, text)
+    text = _ACCOUNT_HYPHEN.sub(_keyword_account_repl, text)
+    text = _ACCOUNT_KEYWORD.sub(_keyword_account_repl, text)
     text = _PHONE.sub("[PHONE]", text)
     text = _EMAIL.sub("[EMAIL]", text)
     text = _MONEY.sub("[MONEY]", text)

@@ -1,7 +1,5 @@
-"""Tests for pii.regex_masker — 20 cases covering all token types."""
-import pytest
+"""Tests for pii.regex_masker — covering all token types, including negative cases."""
 from backend.app.pii.regex_masker import mask
-
 
 # ── 주민번호 (JUMIN) ─────────────────────────────────────────────────────────
 
@@ -9,8 +7,9 @@ def test_mask_jumin_hyphen():
     assert mask("주민 901231-1234567 입니다") == "주민 [JUMIN] 입니다"
 
 
-def test_mask_jumin_no_hyphen():
-    assert mask("등록번호: 9012311234567") == "등록번호: [JUMIN]"
+def test_mask_jumin_no_hyphen_not_masked():
+    # No-hyphen form removed (over-matches ISBNs); only hyphenated form is masked.
+    assert mask("등록번호: 9012311234567") == "등록번호: 9012311234567"
 
 
 def test_mask_jumin_foreign():
@@ -111,3 +110,45 @@ def test_mask_money_eok_won():
 
 def test_mask_money_plain_won():
     assert mask("비용 30000원") == "비용 [MONEY]"
+
+
+# ── 부정 사례 (false-positive guards) ────────────────────────────────────────
+
+def test_no_mask_research_period():
+    # Hyphenated year range must not be treated as an account number.
+    assert mask("연구 기간 2023-2025") == "연구 기간 2023-2025"
+
+
+def test_no_mask_project_number_alpha():
+    # Alphanumeric project code must not be touched.
+    assert mask("과제번호: NRF-2023-R1") == "과제번호: NRF-2023-R1"
+
+
+def test_no_mask_isbn():
+    # 13-digit ISBN must not be matched as JUMIN (no-hyphen pattern removed).
+    assert mask("ISBN 9780306406157") == "ISBN 9780306406157"
+
+
+def test_no_mask_project_hyphen_number():
+    # Government project number without 계좌 keyword must not become ACCOUNT.
+    assert mask("과제번호: 2345-01-123456") == "과제번호: 2345-01-123456"
+
+
+def test_no_mask_plain_16digit_without_card_keyword():
+    # 16-digit number without 카드/신용/체크 keyword must not become [CARD].
+    assert mask("바코드 1234567890123456") == "바코드 1234567890123456"
+
+
+def test_no_mask_product_code_16digit():
+    # Product/barcode 16-digit sequences without card keyword must not become [CARD].
+    assert mask("제품코드: 4912345678901234") == "제품코드: 4912345678901234"
+
+
+# ── 키워드 접두사 보존 ───────────────────────────────────────────────────────
+
+def test_account_keyword_prefix_preserved():
+    assert mask("계좌번호:  12345678901234") == "계좌번호:  [ACCOUNT]"
+
+
+def test_account_hyphen_keyword_prefix_preserved():
+    assert mask("입금계좌 110-234-567890") == "입금계좌 [ACCOUNT]"
