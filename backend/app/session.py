@@ -87,7 +87,7 @@ class SessionStore:
     def get_form_bytes(self, session_id: str) -> bytes:
         """Sync accessor for LangGraph SessionProvider protocol."""
         s = self._sessions.get(session_id)
-        return s.form_bytes if s and s.form_bytes else b""
+        return s.form_bytes if s else b""
 
     def get_material_files(self, session_id: str) -> list[tuple[str, bytes]]:
         """Sync accessor for LangGraph SessionProvider protocol."""
