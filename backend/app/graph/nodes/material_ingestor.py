@@ -7,13 +7,14 @@ Zero LangGraph imports per module purity rules.
 
 from __future__ import annotations
 
+import hashlib
 import tempfile
 from pathlib import Path
 
 from backend.app.graph.state import GraphState, MaterialBundle
 from backend.app.materials.extract import extract_text
 from backend.app.materials.summarize import summarize
-from backend.app.pii import mask_all
+from backend.app.pii import mask_all, scan
 
 
 def ingest_materials(
@@ -49,8 +50,16 @@ def ingest_materials(
         masked_text = mask_all(raw_text)
         summary = summarize(masked_text, filename)
 
+        # Guard the summary against PII leaks before storing
+        clean, _ = scan(summary)
+        if not clean:
+            summary = "[요약 생성 중 오류 - 확인 필요]"
+
+        doc_id = hashlib.sha256(f"{filename}:{len(raw_text)}".encode()).hexdigest()[:12]
+
         new_docs.append(
             {
+                "doc_id": doc_id,
                 "filename": filename,
                 "summary": summary,
                 "masked_text": masked_text,
