@@ -62,11 +62,13 @@ def test_scan_detects_13digit_unhyphenated():
     """Stricter than masker: unhyphenated 13-digit sequences are flagged."""
     ok, reason = scan("번호 9012311234567")
     assert ok is False
+    assert reason != ""
 
 
 def test_scan_detects_13digit_in_context():
     ok, reason = scan("등록번호: 8201015123456 입니다")
     assert ok is False
+    assert reason != ""
 
 
 # ── 계좌번호 (ACCOUNT) ────────────────────────────────────────────────────────
