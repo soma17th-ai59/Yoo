@@ -65,6 +65,8 @@ _ROUTER_REWRITE = {"intent": "rewrite_item", "confidence": 0.95}
 _ROUTER_GENERAL_QA = {"intent": "general_qa", "confidence": 0.95}
 _ROUTER_ADD_MATERIAL = {"intent": "add_material", "confidence": 0.95}
 _ROUTER_UPLOAD_FORM = {"intent": "upload_form", "confidence": 0.95}
+_ROUTER_CHANGE_TONE = {"intent": "change_tone", "confidence": 0.95}
+_ROUTER_UPLOAD_MATERIAL = {"intent": "upload_material", "confidence": 0.95}
 
 _PLANNER_RESPONSE = [
     {
@@ -360,3 +362,110 @@ def test_error_state_routes_to_end():
     assert len(final.errors) > 0, "Expected errors in state"
     assert not form_parser_called, "FormParser ran after router error"
     assert final.form_doc is None, "form_doc should not be set when router errors"
+
+
+# ---------------------------------------------------------------------------
+# Test 7: change_tone skips Planner; drafts are produced
+# ---------------------------------------------------------------------------
+
+
+def test_change_tone_skips_planner():
+    """change_tone routes directly to Generator; Planner is never called."""
+    graph = _build_graph()
+
+    pre_plan = ItemPlan(
+        item_id="s0:p0",
+        source_evidence=["m1"],
+        confidence=0.9,
+        needs_question=False,
+    )
+    initial = GraphState(
+        user_message="더 부드럽게 바꿔줘",
+        session_id="s7",
+        form_doc=_SINGLE_ITEM_FORM,
+        plans=[pre_plan],
+    )
+
+    planner_called = []
+
+    def _spy_planner(messages):
+        planner_called.append(messages)
+        return _PLANNER_RESPONSE
+
+    with (
+        patch(
+            "backend.app.graph.nodes.router._solar_complete",
+            return_value=_ROUTER_CHANGE_TONE,
+        ),
+        patch(
+            "backend.app.graph.nodes.planner._solar_complete",
+            side_effect=_spy_planner,
+        ),
+        patch(
+            "backend.app.graph.nodes.generator._solar_complete",
+            return_value=_GENERATOR_RESPONSE,
+        ),
+        patch(
+            "backend.app.graph.nodes.verifier._solar_complete",
+            return_value=_VERIFIER_OK,
+        ),
+        patch(
+            "backend.app.graph.nodes.renderer.apply_drafts",
+            return_value=b"output-hwpx-bytes",
+        ),
+    ):
+        result = graph.invoke(initial)
+
+    final = GraphState.model_validate(result) if isinstance(result, dict) else result
+
+    assert not planner_called, "Planner Solar was called but should have been skipped"
+    assert len(final.plans) == 1, "Plan count changed unexpectedly"
+    assert len(final.drafts) > 0, "Generator did not produce drafts"
+
+
+# ---------------------------------------------------------------------------
+# Test 8: upload_material → only MaterialIngestor runs; Planner does NOT run
+# ---------------------------------------------------------------------------
+
+
+def test_upload_material_only_ingests():
+    """upload_material intent runs only MaterialIngestor; Planner does not run."""
+    graph = _build_graph()
+    initial = GraphState(
+        user_message="자료를 업로드합니다",
+        session_id="s8",
+        form_doc=_SINGLE_ITEM_FORM,
+        materials=MaterialBundle(docs=[]),
+    )
+
+    planner_called = []
+
+    def _spy_planner(messages):
+        planner_called.append(messages)
+        return _PLANNER_RESPONSE
+
+    with (
+        patch(
+            "backend.app.graph.nodes.router._solar_complete",
+            return_value=_ROUTER_UPLOAD_MATERIAL,
+        ),
+        patch(
+            "backend.app.graph.nodes.material_ingestor.extract_text",
+            return_value="업로드된 자료 내용",
+        ),
+        patch(
+            "backend.app.graph.nodes.material_ingestor.summarize",
+            return_value="업로드된 자료 요약",
+        ),
+        patch(
+            "backend.app.graph.nodes.planner._solar_complete",
+            side_effect=_spy_planner,
+        ),
+    ):
+        result = graph.invoke(initial)
+
+    final = GraphState.model_validate(result) if isinstance(result, dict) else result
+
+    assert len(final.materials.docs) > 0, "MaterialIngestor did not add docs"
+    assert not planner_called, "Planner ran but should not for upload_material"
+    assert final.plans == [], "Plans should be empty for upload_material"
