@@ -39,20 +39,26 @@ def route(state: GraphState) -> dict:
     messages = build_router_messages(state.history, state.user_message)
 
     try:
-        response: dict = _solar_complete(messages)
+        response = _solar_complete(messages)
+        if not isinstance(response, dict):
+            return {"errors": [f"Solar 응답 형식 오류: dict 아닌 {type(response).__name__}"]}
+
+        intent_raw = response.get("intent")
+        confidence_raw = response.get("confidence")
+
+        if intent_raw is None or confidence_raw is None:
+            return {"errors": ["Solar 응답에 intent 또는 confidence 필드가 없습니다."]}
+
+        if intent_raw not in _VALID_INTENTS:
+            return {"errors": [f"알 수 없는 의도입니다: {intent_raw!r}"]}
+
+        intent: Intent = intent_raw  # type: ignore[assignment]
+        confidence = float(confidence_raw)
+
+    except (ValueError, TypeError) as exc:
+        return {"errors": [f"라우터 응답 파싱 오류: {exc}"]}
     except Exception as exc:
         return {"errors": [f"라우터 오류: {exc}"]}
-
-    intent_raw = response.get("intent")
-    confidence = response.get("confidence")
-
-    if intent_raw is None or confidence is None:
-        return {"errors": ["Solar 응답에 intent 또는 confidence 필드가 없습니다."]}
-
-    if intent_raw not in _VALID_INTENTS:
-        return {"errors": [f"알 수 없는 의도입니다: {intent_raw!r}"]}
-
-    intent: Intent = intent_raw  # type: ignore[assignment]
 
     if confidence < _CONFIDENCE_THRESHOLD:
         disambiguation = response.get(
@@ -61,5 +67,5 @@ def route(state: GraphState) -> dict:
         )
         return {"errors": [disambiguation]}
 
-    new_state = append_turn(state, "user", state.user_message)
+    new_state = append_turn(state, "user", state.user_message or "")
     return {"intent": intent, "history": new_state.history}
