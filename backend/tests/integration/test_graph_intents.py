@@ -233,7 +233,7 @@ def test_general_qa_has_no_renderer():
     final = GraphState.model_validate(result) if isinstance(result, dict) else result
 
     assert not renderer_called, "Renderer ran but should not for general_qa"
-    assert not hasattr(final, "rendered_bytes") or not getattr(final, "rendered_bytes", None), \
+    assert "rendered_bytes" not in result or not result.get("rendered_bytes"), \
         "rendered_bytes should not be set for general_qa"
     # Check that a reply was produced (history should have assistant turn)
     assistant_turns = [t for t in final.history if t.get("role") == "assistant"]

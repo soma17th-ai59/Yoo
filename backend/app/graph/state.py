@@ -51,7 +51,7 @@ class GraphState(BaseModel):
     drafts: list[DraftItem] = []
     pending_question: Optional[PendingQuestion] = None
     pending_answer: Optional[str] = None
-    history: list[dict] = []  # last 10 turns
+    history: list[dict[str, str]] = []  # last 10 turns
     errors: list[str] = []
 
 

@@ -171,14 +171,14 @@ def build_compiled_graph(session_provider: SessionProvider):
 
     def _ask_question_node(state: GraphState) -> dict:
         result = ask_question(state)
-        if result.get("pending_question") is not None:
-            answer = interrupt(result["pending_question"].model_dump())
-            resume_result = resume_with_answer(
-                state.model_copy(update=result),
-                answer,
-            )
-            return {**result, **resume_result}
-        return result
+        if result.get("pending_question") is None:
+            return result
+        answer = interrupt(result["pending_question"].model_dump())
+        resume_result = resume_with_answer(
+            state.model_copy(update=result),
+            answer,
+        )
+        return {**result, **resume_result}
 
     # --- Build graph ---------------------------------------------------------
 
