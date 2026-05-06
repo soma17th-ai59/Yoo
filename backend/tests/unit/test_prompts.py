@@ -175,14 +175,17 @@ class TestBuildRouterMessages:
         assert result[-1]["role"] == "user"
         assert result[-1]["content"] == "채워줘"
 
-    def test_history_capped_at_5_turns(self):
-        history = [
-            {"role": "user", "content": f"msg {i}"}
-            for i in range(20)
-        ]
+    def test_history_capped_at_10_messages_interleaved(self):
+        # Realistic interleaved history: 8 pairs = 16 messages; only last 10 kept
+        history = []
+        for i in range(8):
+            history.append({"role": "user", "content": f"질문 {i}"})
+            history.append({"role": "assistant", "content": f"답변 {i}"})
         result = build_router_messages(history, "최종")
-        # system + up to 5 history + final user = 7
-        assert len(result) <= 7
+        # system + up to 10 history messages + final user = 12
+        assert len(result) <= 12
+        assert result[0]["role"] == "system"
+        assert result[-1]["content"] == "최종"
 
     def test_deterministic(self):
         history = [{"role": "user", "content": "이전"}]

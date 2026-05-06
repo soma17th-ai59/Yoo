@@ -92,14 +92,14 @@ VERIFIER_SYS: str = """\
 # Message builders
 # ---------------------------------------------------------------------------
 
-_MAX_HISTORY_TURNS = 5
+_MAX_HISTORY_TURNS = 10  # individual messages (matches GraphState "last 10 turns")
 
 
 def build_router_messages(history: list[dict], user_msg: str) -> list[dict]:
     """Build message list for the Router node.
 
-    Includes up to the last _MAX_HISTORY_TURNS turns from history, sandwiched
-    between the system prompt and the final user message.
+    Includes up to the last _MAX_HISTORY_TURNS messages from history (interleaved
+    user/assistant turns), sandwiched between the system prompt and the final user message.
     """
     messages: list[dict] = [{"role": "system", "content": ROUTER_SYS}]
     recent = history[-_MAX_HISTORY_TURNS:] if history else []
@@ -117,6 +117,8 @@ def build_planner_messages(form_doc: FormDoc, materials: list[dict]) -> list[dic
         for item in form_doc.items
     )
 
+    # summary must be a metadata-level field (not raw extracted text) — callers
+    # are responsible for ensuring it does not contain unmasked PII.
     materials_summary = "\n".join(
         f"- filename: {mat['filename']} | summary: {mat.get('summary', '')}"
         for mat in materials
