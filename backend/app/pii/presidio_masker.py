@@ -1,7 +1,7 @@
 """Pass-2 PII masker: Presidio with custom Korean recognizers.
 
 Handles unstructured Korean PII that regex pass-1 cannot catch:
-  [NAME]         — Korean personal names (성 + 이름)
+  [NAME]         — Korean personal names, gated by name-indicating keywords
   [ADDRESS]      — Korean administrative addresses (시/도 + 구/동/로)
   [AFFILIATION]  — Universities, research institutes, companies
   [STUDENT_ID]   — 8–10 digit student IDs gated by 학번 keyword
@@ -18,26 +18,17 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
-# ── Korean surname dictionary (top 50+ by frequency) ─────────────────────────
+# ── Korean name: keyword-gated approach ──────────────────────────────────────
+# Only match Korean names when preceded by name-indicating keywords.
+# This eliminates all false positives from common form labels (주소, 소속, 이메일…)
+# that would otherwise match the surname-dictionary approach.
+# The keyword prefix is captured in group 1 and restored; only group 2 is masked.
 
-_SURNAMES = (
-    "김|이|박|최|정|강|조|윤|장|임|한|오|서|신|권|황|안|송|류|전|홍|고|문|양|손|배|백|허|유|남|"
-    "심|노|하|곽|성|차|주|우|구|민|나|진|지|엄|채|원|천|방|공|현|함|변|염|여|추|도|소|석|선|설|"
-    "마|길|국|표|명|기|반|라|왕|모|위"
+_NAME_KEYWORDS = re.compile(
+    r"((?:이름|성명|신청자|책임자|연구책임자|공동연구자|연구자|저자|발표자|"
+    r"발명자|출원자|특허권자|지원자|학생연구원|담당자|보조연구원)[:\s]*)"
+    r"([가-힣]{2,4})"
 )
-# Note: 연 omitted — appears in 연구/연도/연락 compound words (false-positive risk).
-
-_SURNAME_RE = f"(?:{_SURNAMES})"
-
-# Korean given names: 1–3 Hangul syllables after a surname.
-# Syllable range: AC00–D7A3 (가–힣)
-_HANGUL_SYLLABLE = r"[가-힣]"
-_GIVEN_RE = f"{_HANGUL_SYLLABLE}{{1,3}}"
-
-# Full name pattern: surname + given name (≥2 syllables total), word-boundary anchored.
-# Requiring 2+ total syllables means a 1-char surname needs a 1+ char given name.
-# Negative lookahead on suffix prevents matching organization-ending words.
-_NAME_PATTERN = rf"(?<!\w){_SURNAME_RE}{_GIVEN_RE}(?!\w)"
 
 # ── Korean administrative address prefixes ────────────────────────────────────
 
@@ -55,11 +46,12 @@ _ADDRESS_PATTERN = rf"(?:{_CITY_PROVINCE}){_ADDRESS_DETAIL}"
 
 # Endings that mark an organization name.
 _AFFIL_SUFFIX = (
-    r"대학교(?:병원)?|대학원|대학|연구소|연구원|연구원|병원|학원|"
+    r"대학교(?:병원)?|대학원|대학|연구소|연구원|병원|학원|"
     r"주식회사|유한회사|합자회사|협회|재단|공단|공사|기관"
 )
 
 # Pattern 1: word(s) ending with an affiliation suffix, at least 2 Hangul chars before.
+_HANGUL_SYLLABLE = r"[가-힣]"
 _AFFIL_WORD = rf"{_HANGUL_SYLLABLE}{{2,}}(?:{_AFFIL_SUFFIX})"
 
 # Pattern 2: (주)... company shorthand
@@ -73,15 +65,6 @@ _AFFIL_PATTERN = rf"(?:{_AFFIL_PAREN}|{_AFFIL_WORD})"
 _STUDENT_ID_PATTERN = r"(?:학번\s*[:：]?\s*)(\d{4}[-]?\d{4,6})"
 
 # ── Recognizer builders ───────────────────────────────────────────────────────
-
-
-def _make_name_recognizer() -> PatternRecognizer:
-    return PatternRecognizer(
-        supported_entity="KR_NAME",
-        supported_language="ko",
-        patterns=[Pattern(name="kr_name", regex=_NAME_PATTERN, score=0.7)],
-        context=["이름", "성명", "연구책임자", "학생", "교수", "박사", "연구원", "담당자"],
-    )
 
 
 def _make_address_recognizer() -> PatternRecognizer:
@@ -102,22 +85,12 @@ def _make_affiliation_recognizer() -> PatternRecognizer:
     )
 
 
-def _make_student_id_recognizer() -> PatternRecognizer:
-    return PatternRecognizer(
-        supported_entity="KR_STUDENT_ID",
-        supported_language="ko",
-        patterns=[Pattern(name="kr_student_id", regex=_STUDENT_ID_PATTERN, score=0.9)],
-    )
-
-
 # ── Engine construction ───────────────────────────────────────────────────────
 
 def _build_engine() -> tuple[AnalyzerEngine, AnonymizerEngine]:
     recognizers = [
-        _make_name_recognizer(),
         _make_address_recognizer(),
         _make_affiliation_recognizer(),
-        _make_student_id_recognizer(),
     ]
     # Pass recognizers and supported_languages together so the registry does
     # not default-load the English-only built-in recognizers.
@@ -143,10 +116,8 @@ def _build_engine() -> tuple[AnalyzerEngine, AnonymizerEngine]:
 _analyzer, _anonymizer = _build_engine()
 
 _OPERATORS: dict[str, OperatorConfig] = {
-    "KR_NAME": OperatorConfig("replace", {"new_value": "[NAME]"}),
     "KR_ADDRESS": OperatorConfig("replace", {"new_value": "[ADDRESS]"}),
     "KR_AFFILIATION": OperatorConfig("replace", {"new_value": "[AFFILIATION]"}),
-    "KR_STUDENT_ID": OperatorConfig("replace", {"new_value": "[STUDENT_ID]"}),
     "DEFAULT": OperatorConfig("keep", {}),
 }
 
@@ -175,16 +146,14 @@ def presidio_mask(text: str) -> str:
 
     shielded = _TOKEN_RE.sub(_shield, text)
 
-    # Student ID: Presidio captures only the digit group, so we handle it
-    # with a simple pre-pass to avoid keyword being left behind in output.
-    def _mask_student_id(t: str) -> str:
-        return re.sub(_STUDENT_ID_PATTERN, "[STUDENT_ID]", t)
+    # Student ID: keyword-gated regex pre-pass.
+    shielded = re.sub(_STUDENT_ID_PATTERN, "[STUDENT_ID]", shielded)
 
-    shielded = _mask_student_id(shielded)
+    # Name: keyword-gated regex pre-pass. Preserve the keyword prefix; mask only the name value.
+    shielded = _NAME_KEYWORDS.sub(lambda m: m.group(1) + "[NAME]", shielded)
 
-    # Analyze and anonymize the remaining text through Presidio.
-    # Exclude KR_STUDENT_ID from Presidio since we handled it above.
-    entities = ["KR_NAME", "KR_ADDRESS", "KR_AFFILIATION"]
+    # Analyze and anonymize the remaining text through Presidio (address + affiliation).
+    entities = ["KR_ADDRESS", "KR_AFFILIATION"]
     results = _analyzer.analyze(text=shielded, language="ko", entities=entities)
 
     if results:

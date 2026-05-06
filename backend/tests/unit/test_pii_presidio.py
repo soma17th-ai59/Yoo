@@ -12,33 +12,75 @@ from backend.app.pii import mask_all
 # ── 이름 (NAME) ──────────────────────────────────────────────────────────────
 
 def test_name_kim_yeongu():
-    result = presidio_mask("연구책임자는 김연구 교수입니다.")
+    result = presidio_mask("연구책임자: 김연구 교수입니다.")
     assert "[NAME]" in result
     assert "김연구" not in result
 
 
 def test_name_park_daehak():
-    result = presidio_mask("박대학 학생이 제출하였습니다.")
+    result = presidio_mask("담당자: 박대학 학생이 제출하였습니다.")
     assert "[NAME]" in result
     assert "박대학" not in result
 
 
 def test_name_hong_gildong():
-    result = presidio_mask("홍길동은 서울에 삽니다.")
+    result = presidio_mask("이름: 홍길동은 서울에 삽니다.")
     assert "[NAME]" in result
     assert "홍길동" not in result
 
 
 def test_name_lee_baksa():
-    result = presidio_mask("이박사가 논문을 발표했습니다.")
+    result = presidio_mask("성명: 이박사가 논문을 발표했습니다.")
     assert "[NAME]" in result
     assert "이박사" not in result
 
 
-def test_name_not_masked_without_surname():
-    # Words that start with non-surname syllables must not trigger NAME.
-    # '학교', '교수', '제출' — none begin with a surname.
+def test_name_not_masked_without_keyword():
+    # Words without a name-indicating keyword must not trigger NAME masking.
     result = presidio_mask("학교에서 교수가 제출합니다.")
+    assert "[NAME]" not in result
+
+
+def test_name_keyword_prefix_preserved():
+    result = presidio_mask("이름: 홍길동")
+    assert "이름:" in result or "이름: " in result
+    assert "[NAME]" in result
+    assert "홍길동" not in result
+
+
+def test_name_responsible_researcher():
+    result = presidio_mask("연구책임자: 김연구")
+    assert "[NAME]" in result
+    assert "김연구" not in result
+    assert "연구책임자" in result
+
+
+# ── 이름 거짓 양성 방지 (NAME false-positive prevention) ────────────────────
+
+def test_no_name_match_on_form_labels():
+    # Common form labels must not trigger NAME masking.
+    for label in ["주소:", "소속:", "이메일:", "전화번호:", "서울특별시"]:
+        result = presidio_mask(label)
+        assert "[NAME]" not in result, f"False positive: {label!r} → {result!r}"
+
+
+def test_no_name_match_on_address_prefix():
+    result = presidio_mask("주소: 서울")
+    assert "[NAME]" not in result
+
+
+def test_no_name_match_on_affiliation_label():
+    result = presidio_mask("소속: 한국대학교")
+    assert "[NAME]" not in result
+
+
+def test_no_name_match_on_email_label():
+    result = presidio_mask("이메일: [EMAIL]")
+    assert "[NAME]" not in result
+
+
+def test_no_name_match_on_phone_label():
+    result = presidio_mask("전화: [PHONE]")
     assert "[NAME]" not in result
 
 
@@ -141,22 +183,27 @@ def test_student_id_not_masked_without_keyword():
 def test_pass1_jumin_token_survives():
     result = presidio_mask("주민번호: [JUMIN]")
     assert "[JUMIN]" in result
+    assert "[NAME]" not in result
 
 
 def test_pass1_phone_token_survives():
     result = presidio_mask("전화: [PHONE]")
     assert "[PHONE]" in result
+    assert result == "전화: [PHONE]"
+    assert "[NAME]" not in result
 
 
 def test_pass1_email_token_survives():
     result = presidio_mask("이메일: [EMAIL]")
     assert "[EMAIL]" in result
+    assert result == "이메일: [EMAIL]"
+    assert "[NAME]" not in result
 
 
 # ── mask_all 합성 (combines pass 1 + pass 2) ────────────────────────────────
 
 def test_mask_all_name_and_phone():
-    text = "김연구 연구원의 전화번호는 010-1234-5678 입니다."
+    text = "연구책임자: 김연구 연구원의 전화번호는 010-1234-5678 입니다."
     result = mask_all(text)
     assert "[NAME]" in result
     assert "[PHONE]" in result
