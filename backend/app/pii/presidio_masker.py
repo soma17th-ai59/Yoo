@@ -6,9 +6,9 @@ Handles unstructured Korean PII that regex pass-1 cannot catch:
   [AFFILIATION]  — Universities, research institutes, companies
   [STUDENT_ID]   — 8–10 digit student IDs gated by 학번 keyword
 
-Uses custom PatternRecognizer instances (no spaCy required) since
-V1 spec explicitly permits simple regex + dictionary approach through
-the Presidio API surface.
+Uses custom PatternRecognizer instances with spaCy ko_core_news_sm as the
+NLP backend. NAME and STUDENT_ID are handled by keyword-gated regex pre-passes;
+ADDRESS and AFFILIATION go through the Presidio analyze→anonymize pipeline.
 """
 
 import re
