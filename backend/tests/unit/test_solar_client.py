@@ -139,6 +139,24 @@ class TestComplete:
 
         assert mock_client.chat.completions.create.call_count == 3
 
+    def test_4xx_raises_immediately_without_retry(self):
+        """4xx errors must propagate immediately — they are not retryable."""
+        mock_client = MagicMock()
+        bad_request = openai.APIStatusError(
+            message="Bad Request",
+            response=MagicMock(status_code=400),
+            body=None,
+        )
+        mock_client.chat.completions.create.side_effect = bad_request
+
+        with patch("backend.app.llm.solar._client", mock_client), \
+             patch("backend.app.llm.solar._sleep") as mock_sleep, \
+             pytest.raises(openai.APIStatusError):
+            complete([{"role": "user", "content": "hi"}])
+
+        assert mock_client.chat.completions.create.call_count == 1
+        mock_sleep.assert_not_called()
+
     def test_base_url_matches_settings(self):
         """The client stored in _client must have been created with settings.SOLAR_BASE_URL."""
         from backend.app.llm import solar

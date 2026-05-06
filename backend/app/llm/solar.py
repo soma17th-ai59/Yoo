@@ -53,7 +53,13 @@ def complete(
             if json_mode:
                 return json.loads(content)
             return content
-        except (openai.APIStatusError, openai.APITimeoutError) as exc:
+        except openai.APIStatusError as exc:
+            if exc.status_code < 500:
+                raise  # 4xx errors are not retryable
+            last_exc = exc
+            if attempt < _MAX_RETRIES - 1:
+                _sleep(_BACKOFF_BASE * (2**attempt))
+        except openai.APITimeoutError as exc:
             last_exc = exc
             if attempt < _MAX_RETRIES - 1:
                 _sleep(_BACKOFF_BASE * (2**attempt))
@@ -62,7 +68,10 @@ def complete(
 
 
 def stream(messages: list[dict]) -> Iterator[str]:
-    """Yield text chunks from a streaming Solar call."""
+    """Yield text chunks from a streaming Solar call.
+
+    No retry — streaming cannot resume mid-stream; callers must re-invoke on error.
+    """
     response = _client.chat.completions.create(
         model=settings.solar_model,
         messages=messages,
