@@ -20,6 +20,7 @@ from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
 
 def test_graph_state_default_empty():
     state = GraphState()
+    assert state.session_id is None
     assert state.intent is None
     assert state.user_message is None
     assert state.form_doc is None
@@ -27,6 +28,7 @@ def test_graph_state_default_empty():
     assert state.plans == []
     assert state.drafts == []
     assert state.pending_question is None
+    assert state.pending_answer is None
     assert state.history == []
     assert state.errors == []
 
@@ -39,6 +41,7 @@ def test_graph_state_model_dump_shape():
     state = GraphState()
     d = state.model_dump()
     assert set(d.keys()) == {
+        "session_id",
         "intent",
         "user_message",
         "form_doc",
@@ -46,6 +49,7 @@ def test_graph_state_model_dump_shape():
         "plans",
         "drafts",
         "pending_question",
+        "pending_answer",
         "history",
         "errors",
     }

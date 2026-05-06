@@ -42,6 +42,7 @@ class PendingQuestion(BaseModel):
 
 
 class GraphState(BaseModel):
+    session_id: Optional[str] = None
     intent: Optional[Intent] = None
     user_message: Optional[str] = None
     form_doc: Optional[FormDoc] = None
@@ -49,6 +50,7 @@ class GraphState(BaseModel):
     plans: list[ItemPlan] = []
     drafts: list[DraftItem] = []
     pending_question: Optional[PendingQuestion] = None
+    pending_answer: Optional[str] = None
     history: list[dict] = []  # last 10 turns
     errors: list[str] = []
 

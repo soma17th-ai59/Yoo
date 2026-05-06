@@ -24,7 +24,6 @@ def render_output(state: GraphState, form_bytes: bytes) -> dict:
         return {"rendered_bytes": form_bytes, "preview_md": ""}
 
     pii_item_ids = {item.item_id for item in state.form_doc.items if item.is_pii}
-    placeholder_ids = {p.item_id for p in state.form_doc.placeholders}
 
     renderer_drafts: list[RendererDraftItem] = []
 
