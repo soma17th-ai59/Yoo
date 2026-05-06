@@ -18,7 +18,11 @@ _PII_PLACEHOLDER_TEXT = "[본인 직접 입력]"
 
 
 def parse_form(state: GraphState, form_bytes: bytes) -> dict:
-    """Parse HWPX bytes and update state with form_doc."""
+    """Parse HWPX bytes and update state with form_doc.
+
+    state is intentionally unused here: this node always parses fresh from bytes.
+    It is accepted so the graph can call all nodes with a uniform (state, **kwargs) signature.
+    """
     raw_doc: FormDoc = parse_hwpx(form_bytes)
     flagged_doc: FormDoc = flag_pii_items(raw_doc)
 

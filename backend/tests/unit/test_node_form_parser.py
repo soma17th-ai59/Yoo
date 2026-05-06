@@ -19,7 +19,7 @@ from backend.app.graph.nodes.form_parser import parse_form
 from backend.app.graph.state import GraphState
 from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
 
-FIXTURE = Path("backend/tests/fixtures/forms/sample_form.hwpx")
+FIXTURE = Path(__file__).parent.parent / "fixtures" / "forms" / "sample_form.hwpx"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
