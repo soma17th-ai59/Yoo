@@ -163,6 +163,13 @@ def test_append_turn_immutable():
     assert original.history == []
 
 
+def test_append_turn_does_not_share_dict_references():
+    original = GraphState(history=[{"role": "user", "content": "원본"}])
+    new_state = append_turn(original, "assistant", "응답")
+    new_state.history[0]["content"] = "변경됨"
+    assert original.history[0]["content"] == "원본"
+
+
 # ---------------------------------------------------------------------------
 # 9. GraphState with form_doc round-trip
 # ---------------------------------------------------------------------------
