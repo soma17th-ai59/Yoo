@@ -164,15 +164,31 @@ if st.session_state.form_doc:
     fd = st.session_state.form_doc
     items = fd.get("items", [])
     pii_count = sum(1 for it in items if it.get("is_pii"))
+    table_count = len(fd.get("tables", []))
+
+    # Group items by their actual section path (resilient to mismatched
+    # sections list — falls back to the section value on each item).
+    by_section: dict[str, list[dict]] = {}
+    for it in items:
+        sec = it.get("section") or "(섹션 없음)"
+        by_section.setdefault(sec, []).append(it)
+
     with st.expander(
-        f"양식 구조 요약 — 항목 {len(items)}개 (PII {pii_count}개, 표 {len(fd.get('tables', []))}개)"
+        f"양식 구조 요약 — 항목 {len(items)}개 (PII {pii_count}개, 표 {table_count}개)",
+        expanded=False,
     ):
-        for sec in fd.get("sections", []):
-            st.markdown(f"**{sec}**")
-            for it in items:
-                if it.get("section") == sec:
-                    badge = " 🔒(PII)" if it.get("is_pii") else ""
-                    st.markdown(f"- `{it.get('item_id')}` {it.get('label')}{badge}")
+        if not items:
+            st.caption("항목이 추출되지 않았습니다. 양식을 다시 업로드해 주세요.")
+        for sec, sec_items in by_section.items():
+            st.markdown(f"**{sec}**  &nbsp;_{len(sec_items)}개_")
+            for it in sec_items:
+                badge = " 🔒(PII)" if it.get("is_pii") else ""
+                st.markdown(f"- {it.get('label', '?')}{badge}  &nbsp;`{it.get('item_id')}`")
+        for tbl in fd.get("tables", []):
+            headers = ", ".join(tbl.get("headers", []))
+            st.markdown(
+                f"**표 `{tbl.get('table_id')}`**  &nbsp;_{tbl.get('row_count', 0)}행_  &nbsp; 헤더: {headers}"
+            )
 
 
 # --- chat thread -----------------------------------------------------------
@@ -303,16 +319,50 @@ if st.session_state.pending_question:
             st.rerun()
 
 
-# --- download + PII banner -------------------------------------------------
+# --- 직접 작성이 필요한 항목 안내 ------------------------------------------
+
+
+def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
+    """Return (pii_items, gap_items) — items the user needs to fill in manually.
+
+    pii_items   — flagged PII (Generator never writes these).
+    gap_items   — non-PII items with no draft yet (Planner didn't have enough
+                  to start, or Generator skipped them via needs_question).
+    """
+    fd = st.session_state.form_doc or {}
+    items = fd.get("items", [])
+    drafted_ids = {d.get("item_id") for d in st.session_state.drafts}
+
+    pii_items = [it for it in items if it.get("is_pii")]
+    gap_items = [
+        it
+        for it in items
+        if not it.get("is_pii") and it.get("item_id") not in drafted_ids
+    ]
+    return pii_items, gap_items
+
+
+if st.session_state.form_doc and (st.session_state.drafts or st.session_state.download_url):
+    pii_items, gap_items = _needs_manual_entry()
+    if pii_items or gap_items:
+        with st.container(border=True):
+            st.markdown("### ✍️ 직접 작성이 필요한 항목")
+            if pii_items:
+                st.markdown("**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**")
+                for it in pii_items:
+                    st.markdown(f"- {it.get('label', '?')}")
+            if gap_items:
+                st.markdown("**❓ 자료에 단서가 부족한 항목 (추가 정보 또는 직접 작성 필요)**")
+                for it in gap_items:
+                    st.markdown(f"- {it.get('label', '?')}")
+                st.caption(
+                    "💡 채팅으로 정보를 더 알려주시거나, 다운로드한 .hwpx에서 직접 채우세요."
+                )
+
+
+# --- download --------------------------------------------------------------
 
 if st.session_state.download_url:
-    fd = st.session_state.form_doc or {}
-    pii_items = [it for it in fd.get("items", []) if it.get("is_pii")]
-    if pii_items:
-        st.info(
-            f"⚠ {len(pii_items)}개 PII 항목은 직접 작성이 필요합니다 "
-            "(`[본인 직접 입력]` 표시)."
-        )
     st.link_button(
         "📥 출력 .hwpx 다운로드",
         f"{BACKEND_URL}{st.session_state.download_url}",

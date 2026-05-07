@@ -15,6 +15,15 @@ def test_parse_extracts_items_and_table():
     assert doc.tables[0].headers  # at least one header detected
 
 
+def test_sections_match_actual_section_paths():
+    """Regression: parser used to hardcode sections=['main'], breaking the
+    UI form-tree expander which groups items by `item.section`. Now sections
+    come from the actual ZIP entries so item.section ∈ doc.sections."""
+    doc = parse_hwpx(FIXTURE.read_bytes())
+    assert "Contents/section0.xml" in doc.sections
+    assert all(it.section in doc.sections for it in doc.items)
+
+
 def test_parse_paragraph_labels_are_korean():
     doc = parse_hwpx(FIXTURE.read_bytes())
     labels = [i.label for i in doc.items if i.kind == "paragraph"]

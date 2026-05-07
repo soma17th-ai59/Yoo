@@ -18,6 +18,7 @@ _HP = "{" + NS["hp"] + "}"
 def parse_hwpx(data: bytes) -> FormDoc:
     items: list[Item] = []
     tables: list[Table] = []
+    section_names: list[str] = []
 
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -66,4 +67,5 @@ def parse_hwpx(data: bytes) -> FormDoc:
     except (zipfile.BadZipFile, RuntimeError, etree.XMLSyntaxError) as e:
         raise ValueError("HWPX file appears to be encrypted or corrupted") from e
 
-    return FormDoc(sections=["main"], items=items, tables=tables, placeholders=[])
+    sections = section_names if section_names else ["main"]
+    return FormDoc(sections=sections, items=items, tables=tables, placeholders=[])
