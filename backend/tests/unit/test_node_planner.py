@@ -313,6 +313,56 @@ class TestSolarErrors:
 # ---------------------------------------------------------------------------
 
 
+class TestWrapperKeys:
+    """Solar wraps the plan list under different keys depending on call context.
+
+    Regression: when Solar returned {"itemPlans": [...]} the planner used to
+    ignore the wrapper, fall back to [], and mark every non-PII item with
+    needs_question=True. Now any of plans / items / itemPlans / item_plans /
+    data is recognised, plus a generic "first list value" fallback.
+    """
+
+    @staticmethod
+    def _plan_payload(item_id: str) -> dict:
+        return {
+            "item_id": item_id,
+            "source_evidence": ["cv.pdf"],
+            "confidence": 0.9,
+            "needs_question": False,
+            "question": None,
+        }
+
+    @pytest.mark.parametrize("wrapper_key", ["plans", "items", "itemPlans", "item_plans", "data"])
+    def test_recognised_wrapper_keys(self, wrapper_key):
+        form = _make_form(_make_item("item1", "연구 목표"))
+        state = _make_state(form)
+
+        with patch(
+            "backend.app.graph.nodes.planner._solar_complete",
+            return_value={wrapper_key: [self._plan_payload("item1")]},
+        ):
+            from backend.app.graph.nodes.planner import plan_items
+            result = plan_items(state)
+
+        assert len(result["plans"]) == 1
+        assert result["plans"][0].item_id == "item1"
+        assert result["plans"][0].needs_question is False
+
+    def test_unknown_wrapper_falls_back_to_first_list_value(self):
+        form = _make_form(_make_item("item1", "연구 목표"))
+        state = _make_state(form)
+
+        with patch(
+            "backend.app.graph.nodes.planner._solar_complete",
+            return_value={"meta": "ignored", "weirdKey": [self._plan_payload("item1")]},
+        ):
+            from backend.app.graph.nodes.planner import plan_items
+            result = plan_items(state)
+
+        assert len(result["plans"]) == 1
+        assert result["plans"][0].needs_question is False
+
+
 class TestEmptyMaterials:
     def test_empty_materials_no_crash(self):
         form = _make_form(_make_item("item1", "연구 목표"))

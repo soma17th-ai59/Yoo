@@ -55,9 +55,19 @@ def plan_items(state: GraphState) -> dict:
         try:
             response = _solar_complete(messages)
             if not isinstance(response, list):
-                # Solar may return {"plans": [...]} or a bare list
+                # Solar wraps the array under different keys depending on the call:
+                # plans / items / itemPlans / item_plans / data ... — accept any
+                # known wrapper, and fall back to the first list-valued field.
                 if isinstance(response, dict):
-                    response = response.get("plans", response.get("items", []))
+                    for key in ("plans", "items", "itemPlans", "item_plans", "data"):
+                        if isinstance(response.get(key), list):
+                            response = response[key]
+                            break
+                    else:
+                        response = next(
+                            (v for v in response.values() if isinstance(v, list)),
+                            [],
+                        )
                 else:
                     response = []
 
