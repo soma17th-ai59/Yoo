@@ -22,25 +22,42 @@ st.set_page_config(page_title="HwpAgent", page_icon=":page_facing_up:", layout="
 st.title("HwpAgent — 양식 자동 채우기")
 
 
-# Neutralize Streamlit's single-letter hotkeys (C = Clear cache, R = Rerun,
-# S = Settings, ? = Help) when a modifier is held, so Ctrl+C / Ctrl+R / ⌘+C
-# behave as plain copy / refresh / etc. without nuking session state.
-# Cache clearing is still available via the explicit "🆕 새 세션" button.
+# Neutralize Streamlit's single-letter hotkeys (C / R / S / ?) when a
+# modifier is held, so Ctrl+C / Cmd+C / Ctrl+R behave as the user expects
+# (copy / refresh) instead of triggering Clear-cache or Rerun.
+# We bind on multiple targets in capture phase, run on every event type
+# Streamlit might use, and re-attach periodically so the listener survives
+# Streamlit's DOM rebuilds.
 components.html(
     """
     <script>
-      try {
-        const doc = window.parent.document;
-        doc.addEventListener(
-          "keydown",
-          function (e) {
-            if (e.ctrlKey || e.metaKey || e.altKey) {
-              e.stopPropagation();
+      (function () {
+        function block(e) {
+          if (e.ctrlKey || e.metaKey || e.altKey) {
+            e.stopImmediatePropagation();
+          }
+        }
+        var ATTACHED = "__hwpagent_hotkey_block";
+        function attach() {
+          try {
+            var pw = window.parent;
+            var pd = pw && pw.document;
+            if (!pd) return;
+            var targets = [pw, pd, pd.body, pd.documentElement].filter(Boolean);
+            for (var i = 0; i < targets.length; i++) {
+              var t = targets[i];
+              if (t[ATTACHED]) continue;
+              ["keydown", "keypress", "keyup"].forEach(function (evt) {
+                t.addEventListener(evt, block, { capture: true });
+              });
+              t[ATTACHED] = true;
             }
-          },
-          true
-        );
-      } catch (err) {}
+          } catch (err) {}
+        }
+        attach();
+        // Re-attach in case Streamlit rebuilds the body
+        setInterval(attach, 1500);
+      })();
     </script>
     """,
     height=0,
@@ -173,6 +190,9 @@ _NEEDS_INFO_PREFIX = "[추가 정보 필요]"
 
 def _is_unfilled(text: str) -> bool:
     return text.strip().startswith(_NEEDS_INFO_PREFIX)
+
+
+from frontend.extract_body import extract_body as _extract_body  # noqa: E402
 
 
 # --- sidebar ---------------------------------------------------------------
@@ -392,7 +412,16 @@ if st.session_state.drafts:
                     st.markdown(f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다.")
                     for m in history:
                         with st.chat_message(m["role"]):
-                            st.markdown(m["content"])
+                            # Render as normal-body-sized plain text (no markdown
+                            # heading / bold escalation) so LLM responses stay
+                            # consistent with the rest of the page.
+                            import html as _html
+
+                            safe = _html.escape(m["content"]).replace("\n", "<br>")
+                            st.markdown(
+                                f'<div style="font-size: 0.95rem; line-height: 1.55;">{safe}</div>',
+                                unsafe_allow_html=True,
+                            )
 
                     with st.form(f"chat_form_{item_id}", clear_on_submit=True):
                         typed = st.text_input(
@@ -414,13 +443,17 @@ if st.session_state.drafts:
                             (m["content"] for m in reversed(history) if m["role"] == "assistant"),
                             None,
                         )
-                        action_cols = st.columns([1, 1, 2])
+                        body_preview = _extract_body(last_assistant) if last_assistant else ""
+                        if body_preview and body_preview != (last_assistant or "").strip():
+                            with st.expander("적용될 본문 미리보기", expanded=False):
+                                st.write(body_preview)
+                        action_cols = st.columns([2, 1, 2])
                         if action_cols[0].button(
-                            "🟢 마지막 응답을 본문으로 적용",
+                            "🟢 본문만 추출해 적용",
                             key=f"apply_chat_{item_id}",
-                            disabled=not last_assistant,
+                            disabled=not body_preview,
                         ):
-                            if last_assistant and _save_draft_edit(item_id, last_assistant):
+                            if body_preview and _save_draft_edit(item_id, body_preview):
                                 st.session_state[f"chatting_{item_id}"] = False
                                 st.session_state[f"applied_{item_id}"] = True
                                 st.session_state[hist_key] = []
