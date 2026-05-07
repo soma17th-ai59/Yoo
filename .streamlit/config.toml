@@ -1,0 +1,14 @@
+[client]
+# Hide the hamburger menu (which hosts the "Clear cache" entry and the C/R/?
+# keyboard shortcut overlay), so accidental Ctrl+C / lone-letter taps don't
+# pop the cache-clear modal mid-edit. Cache reset is exposed explicitly via
+# the "🆕 새 세션 (현재 세션 초기화)" sidebar button.
+toolbarMode = "minimal"
+showErrorDetails = true
+
+[server]
+# Don't auto-rerun on file save while a user is mid-flow.
+runOnSave = false
+
+[theme]
+base = "light"

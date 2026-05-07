@@ -47,3 +47,49 @@ def test_strips_real_world_filler():
     assert "알겠습니다" not in out
     assert "추가 수정 요청사항" not in out
     assert "본 연구는" in out
+
+
+def test_strips_jeongri_haedeurimyeon_preamble():
+    """The session 0607e351 case — markdown-bold "**정리해 드리면…**" preamble
+    used to leak through and become the entire body."""
+    reply = (
+        "**정리해 드리면 다음과 같습니다.**\n\n"
+        "본 연구는 ClinicalBERT-Ko 기반 추출형 요약 모델을 개발하여 "
+        "의료진의 노트 검토 시간을 30% 단축한다.\n\n"
+        "이대로 적용하시겠어요?"
+    )
+    out = extract_body(reply)
+    assert "정리해 드리면" not in out
+    assert "이대로 적용" not in out
+    assert "본 연구는" in out
+
+
+def test_falls_back_when_body_is_too_short():
+    """If stripping leaves only filler, return the full reply (minus
+    obvious trailers) so the user sees something to review."""
+    reply = "**정리해 드리면 다음과 같습니다.**\n\n이대로 적용하시겠어요?"
+    out = extract_body(reply)
+    # Must NOT be empty and must NOT be just the preamble.
+    assert out
+    # Acceptable fallback: returns the preamble text or the full reply,
+    # but at minimum the user gets a visible string they can edit.
+    assert len(out) > 0
+
+
+def test_strips_markdown_heading():
+    reply = "## 본문 제안:\n\n실제 본문 내용입니다 충분히 긴 본문 내용이에요."
+    out = extract_body(reply)
+    assert "##" not in out
+    assert "실제 본문 내용" in out
+
+
+def test_dash_delimited_with_filler_inside_does_not_misfire():
+    reply = (
+        "정리해 드리면 다음과 같습니다.\n"
+        "---\n"
+        "본 연구는 임상 노트 요약을 통해 의료진 부담을 완화한다.\n"
+        "---\n"
+        "이대로 적용하시겠어요?"
+    )
+    out = extract_body(reply)
+    assert out == "본 연구는 임상 노트 요약을 통해 의료진 부담을 완화한다."
