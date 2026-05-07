@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Optional, Protocol
 
 from langgraph.graph import StateGraph, END
-from langgraph.types import interrupt
 
 from backend.app.graph.state import GraphState
 from backend.app.graph.nodes.router import route
@@ -167,18 +166,15 @@ def build_compiled_graph(session_provider: SessionProvider):
             session_provider.put_rendered_bytes(state.session_id, rendered)
         return result
 
-    # --- Question node with interrupt/resume ---------------------------------
+    # --- Question node (V1: no interrupt — emits pending_question and exits) -
 
     def _ask_question_node(state: GraphState) -> dict:
-        result = ask_question(state)
-        if result.get("pending_question") is None:
-            return result
-        answer = interrupt(result["pending_question"].model_dump())
-        resume_result = resume_with_answer(
-            state.model_copy(update=result),
-            answer,
-        )
-        return {**result, **resume_result}
+        # V1 has no checkpointer wired, so we cannot pause and resume on interrupt.
+        # Instead, surface the pending_question via state; the chat endpoint emits
+        # it as an SSE event and the UI sends the answer as the next chat turn,
+        # which gets folded into source_evidence by resume_with_answer at the
+        # start of the next graph run (see chat.py).
+        return ask_question(state)
 
     # --- Build graph ---------------------------------------------------------
 
@@ -248,7 +244,9 @@ def build_compiled_graph(session_provider: SessionProvider):
         },
     )
 
-    g.add_edge("ask_question", "generator")
+    # ask_question always proceeds to verifier so partial drafts still get
+    # verified and rendered; the pending question is surfaced via state.
+    g.add_edge("ask_question", "verifier")
 
     g.add_conditional_edges(
         "verifier",

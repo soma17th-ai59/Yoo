@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from backend.app.graph.graph import build_compiled_graph
+from backend.app.graph.nodes.question import resume_with_answer
 from backend.app.graph.state import GraphState
 from backend.app.session import store
 
@@ -53,8 +54,19 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
         initial.plans = list(prior.plans)
         initial.materials = prior.materials
         initial.history = list(prior.history)
+        initial.drafts = list(prior.drafts)
+        # If a question was pending, treat this user message as the answer
+        # and fold it into the matching ItemPlan so Generator can pick it up.
+        if prior.pending_question is not None:
+            patched = resume_with_answer(
+                prior.model_copy(update={"pending_question": prior.pending_question}),
+                message,
+            )
+            initial.plans = list(patched["plans"])
+            initial.pending_question = None
 
     graph = build_compiled_graph(store)
+    accumulated: dict[str, object] = {}
 
     try:
         async for chunk in graph.astream(initial, stream_mode="updates"):
@@ -64,6 +76,7 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
                 yield {"event": "node_started", "data": json.dumps({"node": node_name})}
                 if not isinstance(diff, dict):
                     continue
+                accumulated.update(diff)
                 if diff.get("intent"):
                     yield {
                         "event": "intent",
@@ -87,6 +100,12 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"error": str(exc)})}
         return
+
+    try:
+        final_state = initial.model_copy(update=accumulated)
+        await store.save_state(session_id, final_state)
+    except Exception:
+        pass
 
     sess = await store.get(session_id)
     download_url = (
