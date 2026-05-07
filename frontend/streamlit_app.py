@@ -90,6 +90,30 @@ def _reset_state() -> None:
         if key == "session_id":
             continue
         st.session_state[key] = default if not isinstance(default, list) else list(default)
+    # Clear per-draft action state from prior session
+    for key in list(st.session_state.keys()):
+        if key.startswith(("applied_", "editing_", "edit_text_")):
+            del st.session_state[key]
+
+
+def _save_draft_edit(item_id: str, text: str) -> bool:
+    """PUT the edited draft to the backend and re-render. Returns True on success."""
+    sid = st.session_state.session_id
+    try:
+        r = httpx.put(
+            f"{BACKEND_URL}/api/sessions/{sid}/drafts",
+            json={"item_id": item_id, "text": text},
+            timeout=30.0,
+        )
+        r.raise_for_status()
+    except Exception as exc:
+        st.error(f"저장 실패: {exc}")
+        return False
+    for di in st.session_state.drafts:
+        if di.get("item_id") == item_id:
+            di["text"] = text
+            break
+    return True
 
 
 # --- sidebar ---------------------------------------------------------------
@@ -203,17 +227,62 @@ if user_msg:
 
 # --- drafts preview blocks -------------------------------------------------
 
+
+def _item_label(item_id: str) -> str:
+    fd = st.session_state.form_doc or {}
+    for it in fd.get("items", []):
+        if it.get("item_id") == item_id:
+            return it.get("label", item_id)
+    return item_id
+
+
 if st.session_state.drafts:
     st.subheader("작성된 초안")
     for d in st.session_state.drafts:
         item_id = d.get("item_id", "?")
+        applied = st.session_state.get(f"applied_{item_id}", False)
+        editing = st.session_state.get(f"editing_{item_id}", False)
+        label = _item_label(item_id)
+
         with st.container(border=True):
             cols = st.columns([5, 1, 1, 1])
-            cols[0].markdown(f"**{item_id}**")
-            cols[1].button("✓ 적용", key=f"apply_{item_id}")
-            cols[2].button("✏ 수정", key=f"edit_{item_id}")
-            cols[3].button("🔁 다시", key=f"redo_{item_id}")
-            st.write(d.get("text", ""))
+            cols[0].markdown(f"**{label}** {'✅' if applied else ''}")
+
+            if cols[1].button(
+                "✓ 적용", key=f"apply_{item_id}", disabled=applied or editing
+            ):
+                st.session_state[f"applied_{item_id}"] = True
+                st.rerun()
+
+            if cols[2].button("✏ 수정", key=f"edit_{item_id}", disabled=applied):
+                st.session_state[f"editing_{item_id}"] = not editing
+                st.rerun()
+
+            if cols[3].button("🔁 다시", key=f"redo_{item_id}", disabled=applied or editing):
+                redo_msg = f"{label} 항목을 다시 써줘"
+                st.session_state.messages.append({"role": "user", "content": redo_msg})
+                with st.chat_message("assistant"):
+                    _process_stream(redo_msg)
+                st.rerun()
+
+            if editing:
+                new_text = st.text_area(
+                    "본문 수정",
+                    value=d.get("text", ""),
+                    key=f"edit_text_{item_id}",
+                    height=160,
+                )
+                save_col, cancel_col = st.columns([1, 1])
+                if save_col.button("저장", key=f"save_{item_id}"):
+                    if _save_draft_edit(item_id, new_text):
+                        st.session_state[f"editing_{item_id}"] = False
+                        st.rerun()
+                if cancel_col.button("취소", key=f"cancel_{item_id}"):
+                    st.session_state[f"editing_{item_id}"] = False
+                    st.rerun()
+            else:
+                st.write(d.get("text", ""))
+
             citations = d.get("citations", [])
             if citations:
                 st.caption(f"근거: {', '.join(citations)}")

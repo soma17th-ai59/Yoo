@@ -1,18 +1,57 @@
-"""POST /api/sessions and GET /api/sessions/{id}/output.hwpx."""
+"""POST /api/sessions, draft-edit PUT, GET /api/sessions/{id}/output.hwpx."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel
 
+from backend.app.graph.nodes.renderer import render_output
 from backend.app.session import store
 
 router = APIRouter()
+
+
+class DraftUpdate(BaseModel):
+    item_id: str
+    text: str
 
 
 @router.post("/api/sessions")
 async def create_session():
     session_id = await store.create()
     return {"session_id": session_id}
+
+
+@router.put("/api/sessions/{session_id}/drafts")
+async def update_draft(session_id: str, payload: DraftUpdate):
+    """Replace one draft's text in the saved graph state and re-render output."""
+    session = await store.get(session_id)
+    if session is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
+    state = session.graph_state
+    if state.form_doc is None:
+        raise HTTPException(status_code=400, detail="form_doc이 없어 재렌더링 불가.")
+
+    if not any(d.item_id == payload.item_id for d in state.drafts):
+        raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+
+    new_drafts = [
+        d.model_copy(update={"text": payload.text, "approved": True})
+        if d.item_id == payload.item_id
+        else d
+        for d in state.drafts
+    ]
+    new_state = state.model_copy(update={"drafts": new_drafts})
+    await store.save_state(session_id, new_state)
+
+    form_bytes = store.get_form_bytes(session_id)
+    if form_bytes:
+        result = render_output(new_state, form_bytes)
+        rendered = result.get("rendered_bytes", b"")
+        if rendered:
+            store.put_rendered_bytes(session_id, rendered)
+
+    return {"ok": True, "item_id": payload.item_id}
 
 
 @router.get("/api/sessions/{session_id}/output.hwpx")

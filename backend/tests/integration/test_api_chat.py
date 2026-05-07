@@ -215,3 +215,67 @@ async def test_download_unknown_session_returns_404():
     async with _client() as c:
         r = await c.get("/api/sessions/no-such/output.hwpx")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/sessions/{id}/drafts — manual edit + re-render
+# ---------------------------------------------------------------------------
+
+
+async def test_put_draft_updates_state_and_rerenders():
+    sid = await _create_session_with_form()
+    with ExitStack() as stack:
+        for p in _start_fill_patches():
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST",
+                "/api/chat",
+                json={"session_id": sid, "message": "양식 채워주세요"},
+            ) as response:
+                await _consume_sse(response)
+
+        async with _client() as c:
+            r = await c.put(
+                f"/api/sessions/{sid}/drafts",
+                json={"item_id": "s0:p0", "text": "사용자가 직접 편집한 본문"},
+            )
+
+    assert r.status_code == 200
+    assert r.json()["item_id"] == "s0:p0"
+
+    session = await store.get(sid)
+    assert session is not None
+    matched = next(d for d in session.graph_state.drafts if d.item_id == "s0:p0")
+    assert matched.text == "사용자가 직접 편집한 본문"
+    assert matched.approved is True
+
+
+async def test_put_draft_unknown_item_returns_404():
+    sid = await _create_session_with_form()
+    with ExitStack() as stack:
+        for p in _start_fill_patches():
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST",
+                "/api/chat",
+                json={"session_id": sid, "message": "양식 채워주세요"},
+            ) as response:
+                await _consume_sse(response)
+
+        async with _client() as c:
+            r = await c.put(
+                f"/api/sessions/{sid}/drafts",
+                json={"item_id": "s0:nope", "text": "x"},
+            )
+    assert r.status_code == 404
+
+
+async def test_put_draft_no_session_returns_404():
+    async with _client() as c:
+        r = await c.put(
+            "/api/sessions/no-such/drafts",
+            json={"item_id": "s0:p0", "text": "x"},
+        )
+    assert r.status_code == 404
