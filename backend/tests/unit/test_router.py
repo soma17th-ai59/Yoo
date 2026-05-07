@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from backend.app.graph.state import GraphState
 
@@ -25,6 +25,31 @@ def _patch_solar(return_value: dict):
 # ---------------------------------------------------------------------------
 # Intent classification — one test per intent (7 intents × ~2 examples = 14+)
 # ---------------------------------------------------------------------------
+
+class TestPresetIntent:
+    """When state.intent is already set on entry the router skips Solar.
+
+    chat.py uses this to bypass classification while resuming a pending
+    question — the answer text would otherwise often be misclassified as
+    general_qa, silently ending the run.
+    """
+
+    def test_preset_intent_skips_solar(self):
+        spy = MagicMock(return_value={"intent": "general_qa", "confidence": 0.99})
+        with patch("backend.app.graph.nodes.router._solar_complete", side_effect=spy):
+            from backend.app.graph.nodes.router import route
+            result = route(GraphState(user_message="EMR 시스템 과부하", intent="rewrite_item"))
+        assert result["intent"] == "rewrite_item"
+        assert spy.call_count == 0
+        assert "errors" not in result
+
+    def test_preset_intent_appends_to_history(self):
+        with patch("backend.app.graph.nodes.router._solar_complete") as solar:
+            solar.return_value = {"intent": "general_qa", "confidence": 0.99}
+            from backend.app.graph.nodes.router import route
+            result = route(GraphState(user_message="답변 텍스트", intent="rewrite_item"))
+        assert result["history"][-1] == {"role": "user", "content": "답변 텍스트"}
+
 
 class TestIntentClassification:
     def test_upload_form_hwpx_attachment(self):

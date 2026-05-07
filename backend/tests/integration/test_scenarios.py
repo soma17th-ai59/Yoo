@@ -304,9 +304,86 @@ async def test_scenario_b_rewrite_item_skips_planner():
 # ---------------------------------------------------------------------------
 
 
-async def test_scenario_c_pending_question_event():
-    """When Planner marks an item needs_question=True, the Generator skips it
-    and the Question node surfaces a pending_question event for that item.
+async def test_scenario_c2_resume_after_pending_does_not_reask():
+    """Regression: when the user answers a question, chat.py forces
+    intent=rewrite_item so the Router skips classification (avoiding the
+    'general_qa' misclassification of plain answer text) and Planner is
+    bypassed (so the patched plans aren't overwritten and the same item
+    isn't asked again on the next turn).
+    """
+    form = _form_with_pii()
+    sid = await _create_session_with_form_and_materials()
+    planner_response = _planner_for_form(form, needs_question_ids={"s0:p4"})
+
+    with ExitStack() as stack:
+        for p in _start_fill_patches(form, planner_response=planner_response):
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST", "/api/chat", json={"session_id": sid, "message": "양식 채워주세요"}
+            ) as response:
+                await _consume_sse(response)
+
+        # Manually plant a pending_question (simulates the V1.5 path where
+        # ask_question may surface one) so the resume logic has work to do.
+        session = await store.get(sid)
+        from backend.app.graph.state import PendingQuestion
+        primed = session.graph_state.model_copy(
+            update={"pending_question": PendingQuestion(item_id="s0:p4", question="강점?")}
+        )
+        await store.save_state(sid, primed)
+
+    # Turn 2: user answers. Chat must NOT call Solar Router or Planner.
+    router_calls = []
+    planner_calls = []
+
+    def _spy_router(_msgs):
+        router_calls.append(1)
+        return {"intent": "general_qa", "confidence": 0.99}
+
+    def _spy_planner(_msgs):
+        planner_calls.append(1)
+        return _planner_for_form(form)
+
+    with (
+        patch("backend.app.graph.nodes.router._solar_complete", side_effect=_spy_router),
+        patch("backend.app.graph.nodes.planner._solar_complete", side_effect=_spy_planner),
+        patch(
+            "backend.app.graph.nodes.generator._solar_complete",
+            return_value={"text": "강점은 EMR 통합 경험입니다.", "citations": ["m1"]},
+        ),
+        patch("backend.app.graph.nodes.verifier._solar_complete", return_value={"verdict": "ok"}),
+        patch(
+            "backend.app.graph.nodes.renderer.apply_drafts",
+            return_value=b"AFTER-RESUME",
+        ),
+    ):
+        async with _client() as c:
+            async with c.stream(
+                "POST", "/api/chat", json={"session_id": sid, "message": "EMR 시스템 과부하"}
+            ) as response:
+                events = await _consume_sse(response)
+
+    assert router_calls == [], "Router classified despite preset intent"
+    assert planner_calls == [], "Planner ran and would have overwritten patched plans"
+
+    intent_event = json.loads(next(d for n, d in events if n == "intent"))
+    assert intent_event["intent"] == "rewrite_item"
+
+    # The answered item now has a real draft, not the placeholder.
+    session = await store.get(sid)
+    answered = next(d for d in session.graph_state.drafts if d.item_id == "s0:p4")
+    assert "[추가 정보 필요]" not in answered.text
+    assert answered.approved is True
+
+
+async def test_scenario_c_needs_question_placeholder_draft():
+    """When Planner marks an item needs_question=True, V1 no longer pauses
+    the graph for an interrupt. The Generator emits a [추가 정보 필요]
+    placeholder draft so the user sees the item in the UI manual-entry list
+    and can answer via chat to fold the response into source_evidence on
+    the next turn (chat.py forces intent=rewrite_item to bypass the Router
+    and Planner so the patched plans aren't overwritten).
     """
     form = _form_with_pii()
     sid = await _create_session_with_form_and_materials()
@@ -324,16 +401,16 @@ async def test_scenario_c_pending_question_event():
                 events = await _consume_sse(response)
 
     event_names = [n for n, _ in events]
-    assert "pending_question" in event_names, f"events: {event_names}"
-    pq_data = json.loads(next(d for n, d in events if n == "pending_question"))
-    assert pq_data["item_id"] == "s0:p4"
-    assert "강점" in pq_data["question"] or "정보" in pq_data["question"]
+    # No interrupt event in V1
+    assert "pending_question" not in event_names
+    assert "preview" in event_names
 
-    # The Generator should have skipped s0:p4
     preview_data = next(d for n, d in events if n == "preview")
     drafts = json.loads(preview_data)
-    drafted_ids = {d["item_id"] for d in drafts}
-    assert "s0:p4" not in drafted_ids
+    p4 = next((d for d in drafts if d["item_id"] == "s0:p4"), None)
+    assert p4 is not None, "needs_question item must still appear in drafts"
+    assert p4["text"].startswith("[추가 정보 필요]")
+    assert "강점" in p4["text"] or "정보" in p4["text"]
 
 
 # ---------------------------------------------------------------------------

@@ -32,7 +32,19 @@ def _solar_complete(messages: list[dict]) -> dict:
 
 
 def route(state: GraphState) -> dict:
-    """Classify user intent from state.user_message."""
+    """Classify user intent from state.user_message.
+
+    If state.intent is already set on entry (e.g. chat.py forced "rewrite_item"
+    while resuming a pending question) we trust the caller and skip the Solar
+    classification — preventing the answer text from being misclassified as
+    general_qa, which would silently end the run.
+    """
+    if state.intent is not None:
+        if state.user_message:
+            new_state = append_turn(state, "user", state.user_message)
+            return {"intent": state.intent, "history": new_state.history}
+        return {"intent": state.intent}
+
     if not state.user_message:
         return {"errors": ["사용자 메시지가 없습니다."]}
 

@@ -17,6 +17,7 @@ from backend.app.llm.prompts import build_verifier_messages
 
 _RETRY_PREFIX = "[검토 필요] "
 _SOFT_FAIL_SUFFIX = " [확인 필요]"
+_NEEDS_INFO_PREFIX = "[추가 정보 필요]"
 _VALID_VERDICTS = frozenset(["ok", "retry", "soft_fail"])
 
 
@@ -38,6 +39,13 @@ def verify_drafts(state: GraphState) -> dict:
     for draft in state.drafts:
         if draft.approved:
             updated_drafts.append(draft)
+            continue
+
+        # Placeholder drafts (needs_question items the user hasn't answered
+        # yet) carry no LLM-generated claims; skip verification and approve
+        # so they render and surface in the UI's manual-entry list.
+        if draft.text.startswith(_NEEDS_INFO_PREFIX):
+            updated_drafts.append(draft.model_copy(update={"approved": True}))
             continue
 
         updated_drafts.append(_verify_single(draft, state))

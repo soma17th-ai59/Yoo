@@ -40,13 +40,14 @@ def _make_plan(
     item_id: str,
     needs_question: bool = False,
     source_evidence: list[str] | None = None,
+    question: str | None = None,
 ) -> ItemPlan:
     return ItemPlan(
         item_id=item_id,
         source_evidence=source_evidence or [],
         confidence=0.8,
         needs_question=needs_question,
-        question=None,
+        question=question,
     )
 
 
@@ -185,10 +186,17 @@ class TestPiiItemsSkipped:
 # ---------------------------------------------------------------------------
 
 
-class TestNeedsQuestionSkipped:
-    def test_needs_question_item_not_in_drafts(self):
+class TestNeedsQuestionPlaceholder:
+    """Generator now emits a [추가 정보 필요] placeholder draft for
+    needs_question items so the user sees them in the UI manual-entry
+    list and the graph can proceed straight to verifier+renderer."""
+
+    def test_needs_question_item_gets_placeholder_draft(self):
         form = _make_form(_make_item("q_item"), _make_item("item1"))
-        plans = [_make_plan("q_item", needs_question=True), _make_plan("item1")]
+        plans = [
+            _make_plan("q_item", needs_question=True, question="강점이 무엇인가요?"),
+            _make_plan("item1"),
+        ]
         state = _make_state(form, plans)
 
         with (
@@ -199,8 +207,25 @@ class TestNeedsQuestionSkipped:
             result = generate_drafts(state)
 
         ids = [d.item_id for d in result["drafts"]]
-        assert "q_item" not in ids
+        assert "q_item" in ids
         assert "item1" in ids
+
+        q_draft = next(d for d in result["drafts"] if d.item_id == "q_item")
+        assert q_draft.text.startswith("[추가 정보 필요]")
+        assert "강점" in q_draft.text
+        assert q_draft.citations == []
+
+    def test_needs_question_no_question_text_uses_default(self):
+        form = _make_form(_make_item("q_item"))
+        plans = [_make_plan("q_item", needs_question=True, question=None)]
+        state = _make_state(form, plans)
+
+        with patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE):
+            from backend.app.graph.nodes.generator import generate_drafts
+            result = generate_drafts(state)
+
+        assert len(result["drafts"]) == 1
+        assert result["drafts"][0].text.startswith("[추가 정보 필요]")
 
 
 # ---------------------------------------------------------------------------

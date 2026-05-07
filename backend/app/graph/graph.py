@@ -117,13 +117,15 @@ def _after_planner(state: GraphState) -> str:
 
 
 def _after_generator(state: GraphState) -> str:
-    """After Generator: check if any plan still needs_question."""
+    """After Generator: always proceed to verifier.
+
+    needs_question items now receive a placeholder draft from the Generator
+    itself, so there is nothing left to interrupt for. The ask_question node
+    is kept in the graph but unreachable in V1 — leaving the door open for a
+    future "ask one at a time" mode without re-wiring.
+    """
     if state.errors:
         return "END"
-    drafted_ids = {d.item_id for d in state.drafts}
-    for plan in state.plans:
-        if plan.needs_question and plan.item_id not in drafted_ids:
-            return "ask_question"
     return "verifier"
 
 

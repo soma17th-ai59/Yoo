@@ -14,6 +14,7 @@ from backend.app.pii import scan
 
 _MAX_ATTEMPTS = 3
 _FALLBACK_TEXT = "[확인 필요]"
+_NEEDS_INFO_PREFIX = "[추가 정보 필요]"
 
 
 def _solar_complete(messages: list[dict]) -> object:
@@ -31,12 +32,26 @@ def generate_drafts(state: GraphState) -> dict:
         return {"drafts": []}
 
     pii_item_ids = {item.item_id for item in state.form_doc.items if item.is_pii}
+    label_by_id = {item.item_id: item.label for item in state.form_doc.items}
     drafts: list[DraftItem] = []
 
     for plan in state.plans:
         if plan.item_id in pii_item_ids:
             continue
+
         if plan.needs_question:
+            # Best-effort placeholder so the user sees the item in the UI and
+            # can answer via chat or fill it in via the ✏ 수정 button.
+            question = plan.question or "관련 정보를 알려주세요."
+            label = label_by_id.get(plan.item_id, plan.item_id)
+            drafts.append(
+                DraftItem(
+                    item_id=plan.item_id,
+                    text=f"{_NEEDS_INFO_PREFIX} {label} — {question}",
+                    citations=[],
+                    approved=False,
+                )
+            )
             continue
 
         text, citations = _generate_with_guard(plan, state)

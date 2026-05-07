@@ -55,8 +55,12 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
         initial.materials = prior.materials
         initial.history = list(prior.history)
         initial.drafts = list(prior.drafts)
-        # If a question was pending, treat this user message as the answer
-        # and fold it into the matching ItemPlan so Generator can pick it up.
+        # If a question was pending, treat this user message as the answer:
+        # 1. fold it into the matching ItemPlan via resume_with_answer
+        # 2. force intent="rewrite_item" so the Router skips classification
+        #    (the answer text would otherwise often be classified as
+        #    general_qa and silently end the run) and Planner is bypassed
+        #    (which would otherwise overwrite the patched plans).
         if prior.pending_question is not None:
             patched = resume_with_answer(
                 prior.model_copy(update={"pending_question": prior.pending_question}),
@@ -64,6 +68,7 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
             )
             initial.plans = list(patched["plans"])
             initial.pending_question = None
+            initial.intent = "rewrite_item"
 
     graph = build_compiled_graph(store)
     accumulated: dict[str, object] = {}
