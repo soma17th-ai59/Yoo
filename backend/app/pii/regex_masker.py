@@ -14,22 +14,24 @@ import re
 # ── compiled patterns ──────────────────────────────────────────────────────────
 
 # Hyphenated only: no-hyphen form over-matches ISBNs/barcodes/product codes.
+# Use digit-aware lookaround instead of \b so Korean-adjacent matches still
+# fire — \b doesn't separate Korean syllables from digits in Python regex.
 _JUMIN = re.compile(
-    r"\b\d{6}-[1-9]\d{6}\b"          # hyphenated: 901231-1234567 (covers 외국인 5-8)
+    r"(?<!\d)\d{6}-[1-9]\d{6}(?!\d)"
 )
 
 # 4-4-4-4 delimited form is precise; plain 16-digit is gated by card keyword.
 _CARD_DELIMITED = re.compile(
-    r"\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b"  # 4-4-4-4 (hyphen or space)
+    r"(?<!\d)\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}(?!\d)"
 )
 _CARD_PLAIN = re.compile(
-    r"(?:카드|신용|체크)[번호\s:：]*(\d{16})\b"   # keyword-gated plain 16 digits
+    r"(?:카드|신용|체크)[번호\s:：]*(\d{16})(?!\d)"   # keyword-gated plain 16 digits
 )
 
 # Hyphenated bank account formats: keyword-gated to avoid project/document numbers.
 # Covers 국민(XXX-XX-XXXXXX), 신한(XXX-XXX-XXXXXX), 농협(XXXX-XX-XXXXXX), etc.
 _ACCOUNT_HYPHEN = re.compile(
-    r"((?:계좌번호|입금계좌|수납계좌|통장|은행|계좌)[번호\s:：]*)\s*(\d{3,4}-\d{2,3}-\d{6,8})\b"
+    r"((?:계좌번호|입금계좌|수납계좌|통장|은행|계좌)[번호\s:：]*)\s*(\d{3,4}-\d{2,3}-\d{6,8})(?!\d)"
 )
 
 # Plain digit account: 10–14 digits preceded by a 계좌 keyword.
@@ -39,9 +41,9 @@ _ACCOUNT_KEYWORD = re.compile(
 )
 
 _PHONE = re.compile(
-    r"\+82[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\b"  # +82-XX-XXXX-XXXX
-    r"|\b0\d{1,2}-\d{3,4}-\d{4}\b"                   # 02-/010-/031- (hyphenated)
-    r"|\b01[016789]\d{7,8}\b",                        # 010/011/016/017/018/019 no hyphen
+    r"\+82[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"   # +82-XX-XXXX-XXXX
+    r"|(?<!\d)0\d{1,2}-\d{3,4}-\d{4}(?!\d)"              # 02-/010-/031- (hyphenated)
+    r"|(?<!\d)01[016789]\d{7,8}(?!\d)",                   # 010/011/016/017/018/019 no hyphen
 )
 
 _EMAIL = re.compile(

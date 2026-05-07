@@ -16,35 +16,39 @@ import re
 
 # ── patterns ──────────────────────────────────────────────────────────────────
 
+# Boundary note: \b doesn't separate Korean syllables from digits in Python
+# regex (both are \w under Unicode), so we use digit-aware lookaround
+# (?<!\d)…(?!\d) to fire even when PII sits flush against Korean characters.
+
 _JUMIN_HYPHEN = re.compile(
-    r"\b\d{6}-[1-9]\d{6}(?!\d)"   # trailing (?!\d) not \b: allows Korean chars after digits
+    r"(?<!\d)\d{6}-[1-9]\d{6}(?!\d)"
 )
 
 _CARD_DELIMITED = re.compile(
-    r"\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b"
+    r"(?<!\d)\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}(?!\d)"
 )
 
 # Stricter than masker: 16-digit plain run flagged regardless of keyword.
 _CARD_PLAIN_16 = re.compile(
-    r"\b\d{16}\b"
+    r"(?<!\d)\d{16}(?!\d)"
 )
 
 # Hyphenated bank account: 3-4 digits, dash, 2-3 digits, dash, 6-8 digits.
 _ACCOUNT_HYPHEN = re.compile(
-    r"\b\d{3,4}-\d{2,3}-\d{6,8}\b"
+    r"(?<!\d)\d{3,4}-\d{2,3}-\d{6,8}(?!\d)"
 )
 
 # Stricter: any 10–14 digit run (covers plain account numbers without keyword).
 # Lower bound 10 avoids years (4 digits) and phone no-hyphen forms (11 digits
 # are caught by _PHONE first, but 10/12/13/14 digit runs catch accounts).
 _ACCOUNT_PLAIN = re.compile(
-    r"\b\d{10,14}\b"
+    r"(?<!\d)\d{10,14}(?!\d)"
 )
 
 _PHONE = re.compile(
-    r"\+82[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\b"
-    r"|\b0\d{1,2}-\d{3,4}-\d{4}\b"
-    r"|\b01[016789]\d{7,8}\b"
+    r"\+82[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"
+    r"|(?<!\d)0\d{1,2}-\d{3,4}-\d{4}(?!\d)"
+    r"|(?<!\d)01[016789]\d{7,8}(?!\d)"
 )
 
 _EMAIL = re.compile(
@@ -56,7 +60,7 @@ _EMAIL = re.compile(
 # keep reason strings specific — but we tag it as "jumin" since 13-digit
 # runs in Korean administrative text are almost exclusively resident IDs.
 _JUMIN_13_PLAIN = re.compile(
-    r"\b\d{13}\b"
+    r"(?<!\d)\d{13}(?!\d)"
 )
 
 # ── ordered scan pipeline ─────────────────────────────────────────────────────

@@ -21,6 +21,22 @@ def test_mask_jumin_multiple():
     assert result == "갑 [JUMIN] 을 [JUMIN]"
 
 
+# ── Korean-adjacent PII (regression: \b doesn't separate Korean from digits)
+
+def test_mask_jumin_flush_against_korean():
+    """주민번호 immediately preceded/followed by Korean syllables must mask.
+    Previously \b failed because Korean syllables are \w in Python regex."""
+    assert mask("주민901231-1234567입니다") == "주민[JUMIN]입니다"
+
+
+def test_mask_phone_flush_against_korean():
+    assert mask("내번호는010-1234-5678입니다") == "내번호는[PHONE]입니다"
+
+
+def test_mask_phone_intl_flush_against_korean():
+    assert mask("연락처+82-10-1234-5678로요") == "연락처[PHONE]로요"
+
+
 # ── 카드 (CARD) ──────────────────────────────────────────────────────────────
 
 def test_mask_card_hyphen():
