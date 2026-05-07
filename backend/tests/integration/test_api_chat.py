@@ -300,8 +300,8 @@ async def test_item_chat_returns_solar_reply():
     with patch("backend.app.api.sessions.solar.complete", return_value="이 항목의 핵심을 말씀해 주시겠어요?"):
         async with _client() as c:
             r = await c.post(
-                f"/api/sessions/{sid}/items/s0:p0/chat",
-                json={"message": "이 항목 어떻게 채워?", "history": []},
+                f"/api/sessions/{sid}/item-chat",
+                json={"item_id": "s0:p0", "message": "이 항목 어떻게 채워?", "history": []},
             )
     assert r.status_code == 200
     body = r.json()
@@ -328,8 +328,8 @@ async def test_item_chat_masks_pii_before_solar():
     with patch("backend.app.api.sessions.solar.complete", side_effect=_spy):
         async with _client() as c:
             r = await c.post(
-                f"/api/sessions/{sid}/items/s0:p0/chat",
-                json={"message": "전화번호는 010-1234-5678입니다", "history": []},
+                f"/api/sessions/{sid}/item-chat",
+                json={"item_id": "s0:p0", "message": "전화번호는 010-1234-5678입니다", "history": []},
             )
     assert r.status_code == 200
     payload = "".join(m.get("content", "") for m in captured[0])
@@ -371,8 +371,8 @@ async def test_item_chat_pii_item_returns_400():
 
     async with _client() as c:
         r = await c.post(
-            f"/api/sessions/{sid}/items/s0:p0/chat",
-            json={"message": "어떻게 채울까요?", "history": []},
+            f"/api/sessions/{sid}/item-chat",
+            json={"item_id": "s0:p0", "message": "어떻게 채울까요?", "history": []},
         )
     assert r.status_code == 400
 
@@ -380,7 +380,55 @@ async def test_item_chat_pii_item_returns_400():
 async def test_item_chat_unknown_session_returns_404():
     async with _client() as c:
         r = await c.post(
-            "/api/sessions/no-such/items/s0:p0/chat",
-            json={"message": "x", "history": []},
+            "/api/sessions/no-such/item-chat",
+            json={"item_id": "s0:p0", "message": "x", "history": []},
         )
     assert r.status_code == 404
+
+
+async def test_item_chat_supports_slash_in_item_id():
+    """Regression: item_ids contain '/' (e.g. 'Contents/section0.xml:p2')
+    so item_id must travel in the body, not the URL path."""
+    sid = await _create_session_with_form()
+    with ExitStack() as stack:
+        for p in _start_fill_patches():
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST", "/api/chat", json={"session_id": sid, "message": "양식 채워주세요"}
+            ) as response:
+                await _consume_sse(response)
+
+    # Patch saved state with an item_id containing '/'
+    from backend.app.hwpx.models import FormDoc, Item
+    from backend.app.graph.state import DraftItem
+    sess = await store.get(sid)
+    real_id = "Contents/section0.xml:p2"
+    new_form = FormDoc(
+        sections=["Contents/section0.xml"],
+        items=[
+            Item(
+                item_id=real_id,
+                label="연구의 필요성",
+                section="Contents/section0.xml",
+                kind="paragraph",
+                xml_xpath="/hp:p[1]",
+                is_pii=False,
+            )
+        ],
+        tables=[],
+        placeholders=[],
+    )
+    new_state = sess.graph_state.model_copy(
+        update={"form_doc": new_form, "drafts": [DraftItem(item_id=real_id, text="초안", citations=[])]}
+    )
+    await store.save_state(sid, new_state)
+
+    with patch("backend.app.api.sessions.solar.complete", return_value="follow-up 질문 드립니다."):
+        async with _client() as c:
+            r = await c.post(
+                f"/api/sessions/{sid}/item-chat",
+                json={"item_id": real_id, "message": "도와주세요", "history": []},
+            )
+    assert r.status_code == 200, r.text
+    assert "follow-up" in r.json()["reply"]

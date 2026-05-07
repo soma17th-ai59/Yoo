@@ -12,6 +12,7 @@ from typing import Iterator
 
 import httpx
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -19,6 +20,31 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="HwpAgent", page_icon=":page_facing_up:", layout="wide")
 st.title("HwpAgent — 양식 자동 채우기")
+
+
+# Neutralize Streamlit's single-letter hotkeys (C = Clear cache, R = Rerun,
+# S = Settings, ? = Help) when a modifier is held, so Ctrl+C / Ctrl+R / ⌘+C
+# behave as plain copy / refresh / etc. without nuking session state.
+# Cache clearing is still available via the explicit "🆕 새 세션" button.
+components.html(
+    """
+    <script>
+      try {
+        const doc = window.parent.document;
+        doc.addEventListener(
+          "keydown",
+          function (e) {
+            if (e.ctrlKey || e.metaKey || e.altKey) {
+              e.stopPropagation();
+            }
+          },
+          true
+        );
+      } catch (err) {}
+    </script>
+    """,
+    height=0,
+)
 
 
 # --- session state ---------------------------------------------------------
@@ -131,8 +157,8 @@ def _item_chat(item_id: str, message: str, history: list[dict]) -> str | None:
     sid = st.session_state.session_id
     try:
         r = httpx.post(
-            f"{BACKEND_URL}/api/sessions/{sid}/items/{item_id}/chat",
-            json={"message": message, "history": history},
+            f"{BACKEND_URL}/api/sessions/{sid}/item-chat",
+            json={"item_id": item_id, "message": message, "history": history},
             timeout=120.0,
         )
         r.raise_for_status()
@@ -153,7 +179,7 @@ def _is_unfilled(text: str) -> bool:
 
 with st.sidebar:
     st.header("세션")
-    if st.button("▶ 새 세션", use_container_width=True):
+    if st.button("🆕 새 세션 (현재 세션 초기화)", use_container_width=True, type="primary"):
         st.session_state.session_id = _create_session()
         _reset_state()
         st.rerun()
@@ -162,6 +188,10 @@ with st.sidebar:
         st.caption(f"session: `{st.session_state.session_id[:8]}…`")
     else:
         st.caption("새 세션 버튼으로 시작하세요.")
+    st.caption(
+        "ℹ️ 세션은 메모리에만 저장됩니다 (디스크 저장 없음). "
+        "백엔드를 재시작하면 모든 세션이 초기화되니, 작성 중에는 백엔드 터미널을 그대로 두세요."
+    )
 
     st.divider()
     st.subheader("양식 (.hwpx)")

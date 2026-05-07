@@ -19,6 +19,7 @@ class DraftUpdate(BaseModel):
 
 
 class ItemChatRequest(BaseModel):
+    item_id: str
     message: str
     history: list[dict[str, str]] = []
 
@@ -79,14 +80,17 @@ async def update_draft(session_id: str, payload: DraftUpdate):
     return {"ok": True, "item_id": payload.item_id}
 
 
-@router.post("/api/sessions/{session_id}/items/{item_id}/chat")
-async def item_chat(session_id: str, item_id: str, payload: ItemChatRequest):
+@router.post("/api/sessions/{session_id}/item-chat")
+async def item_chat(session_id: str, payload: ItemChatRequest):
     """Conversational fill — talk through one form item with the LLM.
 
-    The conversation never persists in graph_state; the UI keeps the history
-    locally and resends it each turn. PII in user input is masked before being
-    forwarded to Solar, matching spec §7 rule 1.
+    item_id moves into the body because parser-generated item_ids contain
+    slashes ("Contents/section0.xml:p2") which collide with URL path
+    segmentation. The conversation never persists in graph_state; the UI
+    keeps the history locally and resends it each turn. PII in user input
+    is masked before being forwarded to Solar, matching spec §7 rule 1.
     """
+    item_id = payload.item_id
     session = await store.get(session_id)
     if session is None or session.graph_state is None:
         raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
