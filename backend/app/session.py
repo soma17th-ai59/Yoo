@@ -69,12 +69,13 @@ class SessionStore:
         async with session._lock:
             session.graph_state = state
 
-    async def put_rendered_bytes(self, session_id: str, data: bytes) -> None:
-        """Store the rendered output bytes."""
+    def put_rendered_bytes(self, session_id: str, data: bytes) -> None:
+        """Store the rendered output bytes (sync — SessionProvider protocol).
+
+        Single attribute write is atomic under the GIL, so no lock needed.
+        """
         session = self._sessions.get(session_id)
-        if session is None:
-            return
-        async with session._lock:
+        if session is not None:
             session.rendered_bytes = data
 
     async def delete(self, session_id: str) -> None:

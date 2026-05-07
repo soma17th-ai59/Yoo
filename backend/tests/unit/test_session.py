@@ -112,7 +112,7 @@ async def test_put_rendered_bytes():
     store = _make_store()
     sid = await store.create()
     rendered = b"\xFF\xFErendered"
-    await store.put_rendered_bytes(sid, rendered)
+    store.put_rendered_bytes(sid, rendered)
     session = await store.get(sid)
     assert session is not None
     assert session.rendered_bytes == rendered
