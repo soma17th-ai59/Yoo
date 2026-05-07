@@ -69,6 +69,11 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
                         "event": "intent",
                         "data": json.dumps({"intent": diff["intent"]}),
                     }
+                if diff.get("form_doc"):
+                    yield {
+                        "event": "form_parsed",
+                        "data": json.dumps(_to_jsonable(diff["form_doc"])),
+                    }
                 if diff.get("drafts"):
                     yield {
                         "event": "preview",
