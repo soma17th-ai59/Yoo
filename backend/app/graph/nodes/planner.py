@@ -59,7 +59,15 @@ def plan_items(state: GraphState) -> dict:
                 # plans / items / itemPlans / item_plans / data ... — accept any
                 # known wrapper, and fall back to the first list-valued field.
                 if isinstance(response, dict):
-                    for key in ("plans", "items", "itemPlans", "item_plans", "data"):
+                    for key in (
+                        "plans",
+                        "items",
+                        "itemPlans",
+                        "ItemPlan",
+                        "ItemPlans",
+                        "item_plans",
+                        "data",
+                    ):
                         if isinstance(response.get(key), list):
                             response = response[key]
                             break

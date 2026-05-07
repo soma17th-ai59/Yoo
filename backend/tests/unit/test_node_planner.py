@@ -332,7 +332,10 @@ class TestWrapperKeys:
             "question": None,
         }
 
-    @pytest.mark.parametrize("wrapper_key", ["plans", "items", "itemPlans", "item_plans", "data"])
+    @pytest.mark.parametrize(
+        "wrapper_key",
+        ["plans", "items", "itemPlans", "ItemPlan", "ItemPlans", "item_plans", "data"],
+    )
     def test_recognised_wrapper_keys(self, wrapper_key):
         form = _make_form(_make_item("item1", "연구 목표"))
         state = _make_state(form)
