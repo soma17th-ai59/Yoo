@@ -1,0 +1,40 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	router(router)
+	form_parser(form_parser)
+	material_ingestor(material_ingestor)
+	planner(planner)
+	generator(generator)
+	ask_question(ask_question)
+	verifier(verifier)
+	renderer(renderer)
+	general_qa_responder(general_qa_responder)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> router;
+	ask_question --> verifier;
+	form_parser -. &nbsp;END&nbsp; .-> __end__;
+	form_parser -.-> material_ingestor;
+	generator -. &nbsp;END&nbsp; .-> __end__;
+	generator -.-> ask_question;
+	generator -.-> verifier;
+	material_ingestor -. &nbsp;END&nbsp; .-> __end__;
+	material_ingestor -.-> planner;
+	planner -. &nbsp;END&nbsp; .-> __end__;
+	planner -.-> generator;
+	router -. &nbsp;END&nbsp; .-> __end__;
+	router -. &nbsp;start_fill&nbsp; .-> form_parser;
+	router -. &nbsp;general_qa&nbsp; .-> general_qa_responder;
+	router -. &nbsp;change_tone&nbsp; .-> generator;
+	router -. &nbsp;add_material&nbsp; .-> material_ingestor;
+	verifier -. &nbsp;END&nbsp; .-> __end__;
+	verifier -.-> renderer;
+	general_qa_responder --> __end__;
+	renderer --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
