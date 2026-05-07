@@ -92,7 +92,17 @@ def _reset_state() -> None:
         st.session_state[key] = default if not isinstance(default, list) else list(default)
     # Clear per-draft action state from prior session
     for key in list(st.session_state.keys()):
-        if key.startswith(("applied_", "editing_", "edit_text_")):
+        if key.startswith(
+            (
+                "applied_",
+                "editing_",
+                "edit_text_",
+                "chatting_",
+                "chat_history_",
+                "chat_input_",
+                "apply_warn_",
+            )
+        ):
             del st.session_state[key]
 
 
@@ -114,6 +124,29 @@ def _save_draft_edit(item_id: str, text: str) -> bool:
             di["text"] = text
             break
     return True
+
+
+def _item_chat(item_id: str, message: str, history: list[dict]) -> str | None:
+    """POST a turn to the per-item conversation endpoint and return the reply."""
+    sid = st.session_state.session_id
+    try:
+        r = httpx.post(
+            f"{BACKEND_URL}/api/sessions/{sid}/items/{item_id}/chat",
+            json={"message": message, "history": history},
+            timeout=120.0,
+        )
+        r.raise_for_status()
+        return r.json().get("reply")
+    except Exception as exc:
+        st.error(f"대화 오류: {exc}")
+        return None
+
+
+_NEEDS_INFO_PREFIX = "[추가 정보 필요]"
+
+
+def _is_unfilled(text: str) -> bool:
+    return text.strip().startswith(_NEEDS_INFO_PREFIX)
 
 
 # --- sidebar ---------------------------------------------------------------
@@ -258,16 +291,25 @@ if st.session_state.drafts:
         item_id = d.get("item_id", "?")
         applied = st.session_state.get(f"applied_{item_id}", False)
         editing = st.session_state.get(f"editing_{item_id}", False)
+        chatting = st.session_state.get(f"chatting_{item_id}", False)
         label = _item_label(item_id)
+        unfilled = _is_unfilled(d.get("text", ""))
 
         with st.container(border=True):
-            cols = st.columns([5, 1, 1, 1])
-            cols[0].markdown(f"**{label}** {'✅' if applied else ''}")
+            badge = ""
+            if applied:
+                badge = "✅"
+            elif unfilled:
+                badge = "⚠️ 미작성"
+            cols = st.columns([4, 1, 1, 1, 1])
+            cols[0].markdown(f"**{label}** {badge}")
 
-            if cols[1].button(
-                "✓ 적용", key=f"apply_{item_id}", disabled=applied or editing
-            ):
-                st.session_state[f"applied_{item_id}"] = True
+            if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=applied or editing):
+                if unfilled:
+                    st.session_state[f"apply_warn_{item_id}"] = True
+                else:
+                    st.session_state[f"applied_{item_id}"] = True
+                    st.session_state.pop(f"apply_warn_{item_id}", None)
                 st.rerun()
 
             if cols[2].button("✏ 수정", key=f"edit_{item_id}", disabled=applied):
@@ -280,6 +322,16 @@ if st.session_state.drafts:
                 with st.chat_message("assistant"):
                     _process_stream(redo_msg)
                 st.rerun()
+
+            if cols[4].button("💬 대화", key=f"chat_{item_id}", disabled=applied):
+                st.session_state[f"chatting_{item_id}"] = not chatting
+                st.rerun()
+
+            if st.session_state.pop(f"apply_warn_{item_id}", False):
+                st.warning(
+                    f"⚠ '{label}' 항목이 아직 비어 있습니다 (`[추가 정보 필요]`). "
+                    "💬 대화로 채우거나 ✏ 수정으로 직접 입력한 뒤 적용해 주세요."
+                )
 
             if editing:
                 new_text = st.text_area(
@@ -302,6 +354,50 @@ if st.session_state.drafts:
             citations = d.get("citations", [])
             if citations:
                 st.caption(f"근거: {', '.join(citations)}")
+
+            if chatting:
+                hist_key = f"chat_history_{item_id}"
+                history = st.session_state.get(hist_key, [])
+                with st.container(border=True):
+                    st.markdown(f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다.")
+                    for m in history:
+                        with st.chat_message(m["role"]):
+                            st.markdown(m["content"])
+
+                    with st.form(f"chat_form_{item_id}", clear_on_submit=True):
+                        typed = st.text_input(
+                            "메시지", key=f"chat_input_{item_id}", label_visibility="collapsed",
+                            placeholder="이 항목에 대한 정보를 입력하거나 질문하세요…",
+                        )
+                        send = st.form_submit_button("전송")
+                    if send and typed:
+                        history.append({"role": "user", "content": typed})
+                        with st.spinner("응답 생성 중…"):
+                            reply = _item_chat(item_id, typed, history[:-1])
+                        if reply:
+                            history.append({"role": "assistant", "content": reply})
+                        st.session_state[hist_key] = history
+                        st.rerun()
+
+                    if history:
+                        last_assistant = next(
+                            (m["content"] for m in reversed(history) if m["role"] == "assistant"),
+                            None,
+                        )
+                        action_cols = st.columns([1, 1, 2])
+                        if action_cols[0].button(
+                            "🟢 마지막 응답을 본문으로 적용",
+                            key=f"apply_chat_{item_id}",
+                            disabled=not last_assistant,
+                        ):
+                            if last_assistant and _save_draft_edit(item_id, last_assistant):
+                                st.session_state[f"chatting_{item_id}"] = False
+                                st.session_state[f"applied_{item_id}"] = True
+                                st.session_state[hist_key] = []
+                                st.rerun()
+                        if action_cols[1].button("대화 닫기", key=f"close_chat_{item_id}"):
+                            st.session_state[f"chatting_{item_id}"] = False
+                            st.rerun()
 
 
 # --- pending question ------------------------------------------------------
@@ -363,6 +459,16 @@ if st.session_state.form_doc and (st.session_state.drafts or st.session_state.do
 # --- download --------------------------------------------------------------
 
 if st.session_state.download_url:
+    unfilled_drafts = [
+        d for d in st.session_state.drafts if _is_unfilled(d.get("text", ""))
+    ]
+    if unfilled_drafts:
+        names = "\n".join(f"  • {_item_label(d.get('item_id'))}" for d in unfilled_drafts)
+        st.warning(
+            f"⚠ 다음 {len(unfilled_drafts)}개 항목이 아직 비어 있습니다 (`[추가 정보 필요]`). "
+            f"지금 다운로드하면 해당 항목은 비어 있는 채로 저장됩니다.\n\n{names}\n\n"
+            "💬 대화 또는 ✏ 수정으로 채운 뒤 다시 다운로드하세요."
+        )
     st.link_button(
         "📥 출력 .hwpx 다운로드",
         f"{BACKEND_URL}{st.session_state.download_url}",

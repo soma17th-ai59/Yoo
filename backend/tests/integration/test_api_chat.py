@@ -279,3 +279,108 @@ async def test_put_draft_no_session_returns_404():
             json={"item_id": "s0:p0", "text": "x"},
         )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sessions/{id}/items/{item_id}/chat — per-item conversation
+# ---------------------------------------------------------------------------
+
+
+async def test_item_chat_returns_solar_reply():
+    sid = await _create_session_with_form()
+    with ExitStack() as stack:
+        for p in _start_fill_patches():
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST", "/api/chat", json={"session_id": sid, "message": "양식 채워주세요"}
+            ) as response:
+                await _consume_sse(response)
+
+    with patch("backend.app.api.sessions.solar.complete", return_value="이 항목의 핵심을 말씀해 주시겠어요?"):
+        async with _client() as c:
+            r = await c.post(
+                f"/api/sessions/{sid}/items/s0:p0/chat",
+                json={"message": "이 항목 어떻게 채워?", "history": []},
+            )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"].startswith("이 항목의 핵심")
+
+
+async def test_item_chat_masks_pii_before_solar():
+    sid = await _create_session_with_form()
+    with ExitStack() as stack:
+        for p in _start_fill_patches():
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST", "/api/chat", json={"session_id": sid, "message": "양식 채워주세요"}
+            ) as response:
+                await _consume_sse(response)
+
+    captured: list[list[dict]] = []
+
+    def _spy(messages, **kwargs):
+        captured.append(messages)
+        return "고맙습니다."
+
+    with patch("backend.app.api.sessions.solar.complete", side_effect=_spy):
+        async with _client() as c:
+            r = await c.post(
+                f"/api/sessions/{sid}/items/s0:p0/chat",
+                json={"message": "전화번호는 010-1234-5678입니다", "history": []},
+            )
+    assert r.status_code == 200
+    payload = "".join(m.get("content", "") for m in captured[0])
+    assert "010-1234-5678" not in payload
+
+
+async def test_item_chat_pii_item_returns_400():
+    """Per spec §7 rule 2 — PII items don't get LLM-assisted authoring."""
+    sid = await _create_session_with_form()
+    with ExitStack() as stack:
+        for p in _start_fill_patches():
+            stack.enter_context(p)
+        async with _client() as c:
+            async with c.stream(
+                "POST", "/api/chat", json={"session_id": sid, "message": "양식 채워주세요"}
+            ) as response:
+                await _consume_sse(response)
+
+    # Patch the saved graph_state's form_doc so item s0:p0 is PII.
+    from backend.app.hwpx.models import FormDoc, Item
+    sess = await store.get(sid)
+    pii_form = FormDoc(
+        sections=["Contents/section0.xml"],
+        items=[
+            Item(
+                item_id="s0:p0",
+                label="성명",
+                section="Contents/section0.xml",
+                kind="paragraph",
+                xml_xpath="/hp:p[1]",
+                is_pii=True,
+            )
+        ],
+        tables=[],
+        placeholders=[],
+    )
+    new_state = sess.graph_state.model_copy(update={"form_doc": pii_form})
+    await store.save_state(sid, new_state)
+
+    async with _client() as c:
+        r = await c.post(
+            f"/api/sessions/{sid}/items/s0:p0/chat",
+            json={"message": "어떻게 채울까요?", "history": []},
+        )
+    assert r.status_code == 400
+
+
+async def test_item_chat_unknown_session_returns_404():
+    async with _client() as c:
+        r = await c.post(
+            "/api/sessions/no-such/items/s0:p0/chat",
+            json={"message": "x", "history": []},
+        )
+    assert r.status_code == 404
