@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from backend.app.graph.state import GraphState, append_turn
 from backend.app.llm import solar
+from backend.app.pii import mask_all
 from backend.app.session import store
 
 router = APIRouter()
@@ -37,16 +38,19 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {req.session_id}")
 
     state = session.graph_state or GraphState(session_id=req.session_id)
-    history_msgs = [{"role": t["role"], "content": t["content"]} for t in state.history]
+    safe_history = [
+        {"role": t["role"], "content": mask_all(t["content"])} for t in state.history
+    ]
+    safe_user_message = mask_all(req.message)
 
     messages = [{"role": "system", "content": _QA_SYSTEM}]
-    messages.extend(history_msgs)
-    messages.append({"role": "user", "content": req.message})
+    messages.extend(safe_history)
+    messages.append({"role": "user", "content": safe_user_message})
 
     try:
         reply = _solar_complete(messages)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Solar 호출 실패: {exc}")
+        raise HTTPException(status_code=502, detail=f"Solar 호출 실패: {exc}") from exc
 
     new_state = append_turn(state, "user", req.message)
     new_state = append_turn(new_state, "assistant", reply)

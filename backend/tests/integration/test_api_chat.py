@@ -49,3 +49,30 @@ def test_chat_appends_to_history(client: TestClient, session_id):
     user_msgs = [t for t in history if t["role"] == "user"]
     assert any(t["content"] == "Q1" for t in user_msgs)
     assert any(t["content"] == "Q2" for t in user_msgs)
+
+
+def test_chat_masks_pii_before_solar(client: TestClient, session_id):
+    """Hard rule 1: user-typed PII (jumin/phone/etc.) MUST be masked before
+    being sent to Solar. The masked content is what reaches _solar_complete."""
+    captured: list[list[dict]] = []
+
+    def _spy(messages: list[dict]) -> str:
+        captured.append(messages)
+        return "응답"
+
+    with patch("backend.app.api.chat._solar_complete", side_effect=_spy):
+        r = client.post(
+            "/api/chat",
+            json={
+                "session_id": session_id,
+                "message": "제 주민번호는 901010-1234567 입니다.",
+            },
+        )
+    assert r.status_code == 200
+    assert captured, "Solar was not called"
+    last_user_msg = next(
+        m for m in reversed(captured[-1]) if m["role"] == "user"
+    )
+    assert "901010-1234567" not in last_user_msg["content"], (
+        "PII (jumin) leaked to Solar — mask_all not applied"
+    )

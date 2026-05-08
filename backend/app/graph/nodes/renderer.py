@@ -49,7 +49,7 @@ def render_output(state: GraphState, form_bytes: bytes) -> dict:
                 RendererDraftItem(item_id=placeholder.item_id, text=draft.text, is_pii=False)
             )
 
-    # Non-PII approved drafts (items not PII and not already handled via placeholders)
+    # Non-PII locked drafts (items not PII and not already handled via placeholders)
     handled_ids = {rd.item_id for rd in renderer_drafts}
     for draft in state.drafts:
         if draft.item_id in handled_ids:
