@@ -214,12 +214,25 @@ def _save_draft_edit(item_id: str, text: str) -> bool:
     return True
 
 
+def _fetch_output_bytes() -> bytes | None:
+    sid = st.session_state.session_id
+    try:
+        r = httpx.get(
+            f"{_current_backend()}/api/sessions/{sid}/output.hwpx", timeout=60.0
+        )
+        r.raise_for_status()
+        return r.content
+    except Exception as exc:
+        st.error(f"다운로드 실패: {exc}")
+        return None
+
+
 def _item_chat(item_id: str, message: str, history: list[dict]) -> str | None:
     """POST a turn to the per-item conversation endpoint and return the reply."""
     sid = st.session_state.session_id
     try:
         r = httpx.post(
-            f"{BACKEND_URL}/api/sessions/{sid}/item-chat",
+            f"{_current_backend()}/api/sessions/{sid}/item-chat",
             json={"item_id": item_id, "message": message, "history": history},
             timeout=120.0,
         )
@@ -298,6 +311,26 @@ with st.sidebar:
         st.rerun()
     if not can_fill:
         st.caption("양식과 자료를 모두 업로드하면 활성화됩니다.")
+
+    locked_count = sum(1 for d in st.session_state.drafts if d.get("locked"))
+    total_count = len(st.session_state.drafts)
+    st.caption(f"적용된 항목 {locked_count} / 전체 {total_count}")
+    if st.button(
+        "📥 출력 .hwpx 다운로드",
+        use_container_width=True,
+        disabled=locked_count == 0,
+        key="download_btn",
+    ):
+        data = _fetch_output_bytes()
+        if data:
+            st.download_button(
+                "📁 파일 저장",
+                data=data,
+                file_name="output.hwpx",
+                mime="application/vnd.hancom.hwpx",
+                key="download_save_btn",
+                use_container_width=True,
+            )
 
 
 # --- form-structure visualization ------------------------------------------
