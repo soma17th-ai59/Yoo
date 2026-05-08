@@ -82,6 +82,60 @@ class DraftUpdate(BaseModel):
     text: str
 
 
+class ItemIdRequest(BaseModel):
+    item_id: str
+
+
+def _toggle_locked(state, item_id: str, value: bool):
+    new_drafts = []
+    updated = None
+    for d in state.drafts:
+        if d.item_id == item_id:
+            updated = d.model_copy(update={"locked": value})
+            new_drafts.append(updated)
+        else:
+            new_drafts.append(d)
+    if updated is None:
+        return None, None
+    return state.model_copy(update={"drafts": new_drafts}), updated
+
+
+@router.post("/api/sessions/{session_id}/items/apply")
+async def apply_item(session_id: str, payload: ItemIdRequest):
+    session = await store.get(session_id)
+    if session is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
+    state = session.graph_state
+    if state.form_doc is None:
+        raise HTTPException(status_code=400, detail="form_doc이 없습니다.")
+    item = next((it for it in state.form_doc.items if it.item_id == payload.item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item 미존재: {payload.item_id}")
+    if item.is_pii:
+        raise HTTPException(
+            status_code=400,
+            detail="PII 항목은 항상 [본인 직접 입력]으로 비워두며 적용 대상이 아닙니다.",
+        )
+    new_state, updated = _toggle_locked(state, payload.item_id, True)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+    await store.save_state(session_id, new_state)
+    return updated.model_dump()
+
+
+@router.post("/api/sessions/{session_id}/items/unlock")
+async def unlock_item(session_id: str, payload: ItemIdRequest):
+    session = await store.get(session_id)
+    if session is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
+    state = session.graph_state
+    new_state, updated = _toggle_locked(state, payload.item_id, False)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+    await store.save_state(session_id, new_state)
+    return updated.model_dump()
+
+
 class ItemChatRequest(BaseModel):
     item_id: str
     message: str
