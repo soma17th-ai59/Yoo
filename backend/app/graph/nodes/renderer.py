@@ -1,7 +1,7 @@
-"""Renderer node — pack approved drafts + PII placeholders into output HWPX bytes.
+"""Renderer node — pack locked drafts + PII placeholders into output HWPX bytes.
 
 PII items always render as "[본인 직접 입력]" regardless of draft state.
-Non-PII approved drafts are written as-is.
+Non-PII locked drafts are written as-is.
 Also produces a markdown preview string for the frontend.
 Zero LangGraph imports per module purity rules.
 """
@@ -38,9 +38,9 @@ def render_output(state: GraphState, form_bytes: bytes) -> dict:
     for placeholder in state.form_doc.placeholders:
         if placeholder.item_id in pii_item_ids:
             continue  # already handled above
-        # Non-PII placeholders: look for a matching approved draft
+        # Non-PII placeholders: look for a matching locked draft
         draft = next(
-            (d for d in state.drafts if d.item_id == placeholder.item_id and d.approved),
+            (d for d in state.drafts if d.item_id == placeholder.item_id and d.locked),
             None,
         )
         if draft is not None:
@@ -55,7 +55,7 @@ def render_output(state: GraphState, form_bytes: bytes) -> dict:
             continue
         if draft.item_id in pii_item_ids:
             continue
-        if draft.approved:
+        if draft.locked:
             renderer_drafts.append(
                 RendererDraftItem(item_id=draft.item_id, text=draft.text, is_pii=False)
             )

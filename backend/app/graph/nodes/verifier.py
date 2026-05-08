@@ -1,11 +1,12 @@
 """Verifier node — review each draft and apply verdict markers.
 
 V1 simplified approach (no re-generation within this node):
-  ok        → draft.approved = True, text unchanged
-  retry     → prepend "[검토 필요] " to text, set approved = True
-  soft_fail → append " [확인 필요]" to text, set approved = True
+  ok        → text unchanged, locked unchanged
+  retry     → prepend "[검토 필요] " to text
+  soft_fail → append " [확인 필요]" to text
   invalid   → treat as soft_fail
 
+locked is never set here; it is set only when the user presses ✓ apply.
 Zero LangGraph imports per module purity rules.
 """
 
@@ -27,25 +28,19 @@ def _solar_complete(messages: list[dict]) -> object:
 
 
 def verify_drafts(state: GraphState) -> dict:
-    """Verify every unapproved draft and return an updated draft list.
+    """Verify every draft and return an updated draft list with text markers applied.
 
-    Returns {"drafts": list[DraftItem]} where all drafts have approved=True.
+    Returns {"drafts": list[DraftItem]}. locked is never mutated here.
     """
     if state.form_doc is None:
-        return {"drafts": [draft.model_copy(update={"approved": True}) for draft in state.drafts]}
+        return {"drafts": list(state.drafts)}
 
     updated_drafts: list[DraftItem] = []
 
     for draft in state.drafts:
-        if draft.approved:
-            updated_drafts.append(draft)
-            continue
-
-        # Placeholder drafts (needs_question items the user hasn't answered
-        # yet) carry no LLM-generated claims; skip verification and approve
-        # so they render and surface in the UI's manual-entry list.
+        # Placeholder drafts carry no LLM-generated claims; pass through unchanged.
         if draft.text.startswith(_NEEDS_INFO_PREFIX):
-            updated_drafts.append(draft.model_copy(update={"approved": True}))
+            updated_drafts.append(draft)
             continue
 
         updated_drafts.append(_verify_single(draft, state))
@@ -73,8 +68,8 @@ def _verify_single(draft: DraftItem, state: GraphState) -> DraftItem:
         verdict = "soft_fail"
 
     if verdict == "ok":
-        return draft.model_copy(update={"approved": True})
+        return draft
     elif verdict == "retry":
-        return draft.model_copy(update={"text": _RETRY_PREFIX + draft.text, "approved": True})
+        return draft.model_copy(update={"text": _RETRY_PREFIX + draft.text})
     else:  # soft_fail or fallback
-        return draft.model_copy(update={"text": draft.text + _SOFT_FAIL_SUFFIX, "approved": True})
+        return draft.model_copy(update={"text": draft.text + _SOFT_FAIL_SUFFIX})

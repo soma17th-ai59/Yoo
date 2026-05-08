@@ -97,7 +97,7 @@ class TestReturnShape:
 
 
 # ---------------------------------------------------------------------------
-# 2. DraftItem has text, citations, item_id, approved=False
+# 2. DraftItem has text, citations, item_id, locked=False
 # ---------------------------------------------------------------------------
 
 
@@ -115,7 +115,7 @@ class TestDraftItemFields:
 
         assert all(isinstance(d, DraftItem) for d in result["drafts"])
 
-    def test_draft_approved_false_by_default(self):
+    def test_draft_locked_false_by_default(self):
         form = _make_form(_make_item("item1"))
         state = _make_state(form, [_make_plan("item1")])
 
@@ -126,7 +126,7 @@ class TestDraftItemFields:
             from backend.app.graph.nodes.generator import generate_drafts
             result = generate_drafts(state)
 
-        assert result["drafts"][0].approved is False
+        assert result["drafts"][0].locked is False
 
     def test_draft_has_correct_item_id(self):
         form = _make_form(_make_item("goal_item"))

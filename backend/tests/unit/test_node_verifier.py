@@ -1,8 +1,8 @@
 """Unit tests for Verifier node.
 
 verify_drafts(state: GraphState) -> dict
-  Calls Solar per unapproved draft; applies verdict transformation.
-  Returns {"drafts": list[DraftItem]} with all approved=True.
+  Calls Solar per draft; applies verdict text markers.
+  Returns {"drafts": list[DraftItem]}. locked is never mutated.
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ def _make_form(*items: Item) -> FormDoc:
     return FormDoc(sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[])
 
 
-def _make_draft(item_id: str, text: str = "초안 내용입니다.", approved: bool = False) -> DraftItem:
-    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], approved=approved)
+def _make_draft(item_id: str, text: str = "초안 내용입니다.", locked: bool = False) -> DraftItem:
+    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], locked=locked)
 
 
 def _make_state(
@@ -51,12 +51,12 @@ def _make_state(
 
 
 # ---------------------------------------------------------------------------
-# 1. ok verdict → draft approved=True, text unchanged
+# 1. ok verdict → text unchanged, locked unchanged (False)
 # ---------------------------------------------------------------------------
 
 
 class TestOkVerdict:
-    def test_ok_sets_approved_true(self):
+    def test_ok_locked_unchanged(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1")
         state = _make_state(form, [draft])
@@ -68,7 +68,7 @@ class TestOkVerdict:
             from backend.app.graph.nodes.verifier import verify_drafts
             result = verify_drafts(state)
 
-        assert result["drafts"][0].approved is True
+        assert result["drafts"][0].locked is False
 
     def test_ok_text_unchanged(self):
         form = _make_form(_make_item("item1"))
@@ -106,7 +106,7 @@ class TestRetryVerdict:
 
         assert result["drafts"][0].text.startswith("[검토 필요]")
 
-    def test_retry_sets_approved_true(self):
+    def test_retry_locked_unchanged(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1")
         state = _make_state(form, [draft])
@@ -118,7 +118,7 @@ class TestRetryVerdict:
             from backend.app.graph.nodes.verifier import verify_drafts
             result = verify_drafts(state)
 
-        assert result["drafts"][0].approved is True
+        assert result["drafts"][0].locked is False
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ class TestSoftFailVerdict:
 
         assert "[확인 필요]" in result["drafts"][0].text
 
-    def test_soft_fail_sets_approved_true(self):
+    def test_soft_fail_locked_unchanged(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1")
         state = _make_state(form, [draft])
@@ -153,7 +153,7 @@ class TestSoftFailVerdict:
             from backend.app.graph.nodes.verifier import verify_drafts
             result = verify_drafts(state)
 
-        assert result["drafts"][0].approved is True
+        assert result["drafts"][0].locked is False
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ class TestInvalidSolarResponse:
             result = verify_drafts(state)
 
         assert "[확인 필요]" in result["drafts"][0].text
-        assert result["drafts"][0].approved is True
+        assert result["drafts"][0].locked is False
 
     def test_unknown_verdict_marks_soft_fail(self):
         form = _make_form(_make_item("item1"))
@@ -260,16 +260,16 @@ class TestStateMutation:
 
         # State's original draft is unchanged
         assert state.drafts[0].text == original_text
-        assert state.drafts[0].approved is False
+        assert state.drafts[0].locked is False
 
 
 # ---------------------------------------------------------------------------
-# 8. All drafts end up approved=True after verify_drafts
+# 8. locked stays False after verify_drafts (only user action sets it)
 # ---------------------------------------------------------------------------
 
 
-class TestAllApproved:
-    def test_all_drafts_approved_after_verify(self):
+class TestPlaceholderPassthrough:
+    def test_locked_stays_false_after_verify(self):
         form = _make_form(_make_item("item1"), _make_item("item2"))
         drafts = [_make_draft("item1"), _make_draft("item2")]
         state = _make_state(form, drafts)
@@ -286,14 +286,14 @@ class TestAllApproved:
             from backend.app.graph.nodes.verifier import verify_drafts
             result = verify_drafts(state)
 
-        assert all(d.approved for d in result["drafts"])
+        assert all(not d.locked for d in result["drafts"])
 
-    def test_already_approved_drafts_passed_through(self):
+    def test_placeholder_draft_passed_through_unchanged(self):
         form = _make_form(_make_item("item1"))
-        draft = _make_draft("item1", approved=True)
+        draft = _make_draft("item1", text="[추가 정보 필요] 항목 — 관련 정보를 알려주세요.")
         state = _make_state(form, [draft])
 
-        # Solar should NOT be called for already-approved drafts
+        # Solar should NOT be called for placeholder drafts
         with patch(
             "backend.app.graph.nodes.verifier._solar_complete",
             side_effect=AssertionError("should not call Solar"),
@@ -301,4 +301,5 @@ class TestAllApproved:
             from backend.app.graph.nodes.verifier import verify_drafts
             result = verify_drafts(state)
 
-        assert result["drafts"][0].approved is True
+        assert result["drafts"][0].text == draft.text
+        assert result["drafts"][0].locked is False

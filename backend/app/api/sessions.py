@@ -62,7 +62,7 @@ async def update_draft(session_id: str, payload: DraftUpdate):
         raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
 
     new_drafts = [
-        d.model_copy(update={"text": payload.text, "approved": True})
+        d.model_copy(update={"text": payload.text, "locked": True})
         if d.item_id == payload.item_id
         else d
         for d in state.drafts

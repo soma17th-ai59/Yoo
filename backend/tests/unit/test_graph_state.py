@@ -110,7 +110,7 @@ def test_draft_item_round_trip():
         item_id="sec0:p0",
         text="이 연구는 …",
         citations=["mat_001:p3", "mat_002:p1"],
-        approved=True,
+        locked=True,
     )
     restored = DraftItem.model_validate(draft.model_dump())
     assert restored == draft
@@ -118,7 +118,7 @@ def test_draft_item_round_trip():
 
 def test_draft_item_defaults():
     draft = DraftItem(item_id="sec0:p0", text="내용", citations=[])
-    assert draft.approved is False
+    assert draft.locked is False
 
 
 # ---------------------------------------------------------------------------

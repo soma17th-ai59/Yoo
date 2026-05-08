@@ -33,7 +33,7 @@ class DraftItem(BaseModel):
     item_id: str
     text: str
     citations: list[str]
-    approved: bool = False
+    locked: bool = False
 
 
 class PendingQuestion(BaseModel):

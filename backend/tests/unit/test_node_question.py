@@ -45,7 +45,7 @@ def _make_plan(item_id: str, needs_question: bool = False, question: str | None 
 
 
 def _make_draft(item_id: str) -> DraftItem:
-    return DraftItem(item_id=item_id, text="drafted", citations=[], approved=True)
+    return DraftItem(item_id=item_id, text="drafted", citations=[], locked=True)
 
 
 def _make_state(

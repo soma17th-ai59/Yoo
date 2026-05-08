@@ -49,7 +49,6 @@ def generate_drafts(state: GraphState) -> dict:
                     item_id=plan.item_id,
                     text=f"{_NEEDS_INFO_PREFIX} {label} — {question}",
                     citations=[],
-                    approved=False,
                 )
             )
             continue
@@ -60,7 +59,6 @@ def generate_drafts(state: GraphState) -> dict:
                 item_id=plan.item_id,
                 text=text,
                 citations=citations,
-                approved=False,
             )
         )
 

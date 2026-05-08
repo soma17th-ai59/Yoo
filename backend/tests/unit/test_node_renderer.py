@@ -1,7 +1,7 @@
 """Unit tests for Renderer node.
 
 render_output(state: GraphState, form_bytes: bytes) -> dict
-  Packs approved drafts + PII placeholders into HWPX bytes.
+  Packs locked drafts + PII placeholders into HWPX bytes.
   Returns {"rendered_bytes": bytes, "preview_md": str}.
 """
 
@@ -48,8 +48,8 @@ def _make_form(
     )
 
 
-def _make_draft(item_id: str, text: str = "작성된 내용입니다.", approved: bool = True) -> DraftItem:
-    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], approved=approved)
+def _make_draft(item_id: str, text: str = "작성된 내용입니다.", locked: bool = True) -> DraftItem:
+    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], locked=locked)
 
 
 def _make_state(
@@ -160,15 +160,15 @@ class TestPiiEnforcement:
 
 
 # ---------------------------------------------------------------------------
-# 3. Approved drafts are rendered
+# 3. Locked drafts are rendered; unlocked drafts are not
 # ---------------------------------------------------------------------------
 
 
 class TestApprovedDraftsRendered:
-    def test_approved_draft_included_in_apply_drafts(self):
+    def test_locked_draft_included_in_apply_drafts(self):
         item = _make_item("item1", "연구 목표")
         form = _make_form([item])
-        draft = _make_draft("item1", text="연구 목표 내용", approved=True)
+        draft = _make_draft("item1", text="연구 목표 내용", locked=True)
         state = _make_state(form, [draft])
 
         captured = []
@@ -185,10 +185,10 @@ class TestApprovedDraftsRendered:
         ids = [d.item_id for d in captured]
         assert "item1" in ids
 
-    def test_unapproved_draft_not_rendered(self):
+    def test_unlocked_draft_not_rendered(self):
         item = _make_item("item1", "연구 목표")
         form = _make_form([item])
-        draft = _make_draft("item1", text="미완성", approved=False)
+        draft = _make_draft("item1", text="미완성", locked=False)
         state = _make_state(form, [draft])
 
         captured = []
