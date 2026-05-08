@@ -32,11 +32,14 @@ def generate_drafts(state: GraphState) -> dict:
         return {"drafts": []}
 
     pii_item_ids = {item.item_id for item in state.form_doc.items if item.is_pii}
+    non_fillable_ids = {item.item_id for item in state.form_doc.items if not item.fillable}
     label_by_id = {item.item_id: item.label for item in state.form_doc.items}
     drafts: list[DraftItem] = []
 
     for plan in state.plans:
         if plan.item_id in pii_item_ids:
+            continue
+        if plan.item_id in non_fillable_ids:
             continue
 
         if plan.needs_question:
