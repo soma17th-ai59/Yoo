@@ -1,7 +1,5 @@
 """Central GraphState for the LangGraph form-fill pipeline."""
 
-from typing import Optional
-
 from pydantic import BaseModel
 
 from backend.app.hwpx.models import FormDoc
@@ -16,7 +14,7 @@ class ItemPlan(BaseModel):
     source_evidence: list[str]
     confidence: float
     needs_question: bool
-    question: Optional[str] = None
+    question: str | None = None
 
 
 class DraftItem(BaseModel):
@@ -27,8 +25,8 @@ class DraftItem(BaseModel):
 
 
 class GraphState(BaseModel):
-    session_id: Optional[str] = None
-    form_doc: Optional[FormDoc] = None
+    session_id: str | None = None
+    form_doc: FormDoc | None = None
     materials: MaterialBundle = MaterialBundle(docs=[])
     plans: list[ItemPlan] = []
     drafts: list[DraftItem] = []

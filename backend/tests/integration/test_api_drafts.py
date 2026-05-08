@@ -21,7 +21,9 @@ async def session_with_draft(client: TestClient):
     sid = client.post("/api/sessions").json()["session_id"]
     form = FormDoc(
         sections=["s1"],
-        items=[Item(item_id="it1", label="자기소개", section="s1", kind="paragraph", xml_xpath="/p[1]")],
+        items=[
+            Item(item_id="it1", label="자기소개", section="s1", kind="paragraph", xml_xpath="/p[1]")
+        ],
         tables=[],
         placeholders=[],
     )
@@ -37,9 +39,7 @@ async def session_with_draft(client: TestClient):
 
 def test_put_drafts_replaces_text_only(client: TestClient, session_with_draft):
     sid = session_with_draft
-    r = client.put(
-        f"/api/sessions/{sid}/drafts", json={"item_id": "it1", "text": "수정됨"}
-    )
+    r = client.put(f"/api/sessions/{sid}/drafts", json={"item_id": "it1", "text": "수정됨"})
     assert r.status_code == 200
     body = r.json()
     assert body["text"] == "수정됨"
@@ -49,9 +49,7 @@ def test_put_drafts_replaces_text_only(client: TestClient, session_with_draft):
 def test_put_drafts_409_when_locked(client: TestClient, session_with_draft):
     sid = session_with_draft
     client.post(f"/api/sessions/{sid}/items/apply", json={"item_id": "it1"})
-    r = client.put(
-        f"/api/sessions/{sid}/drafts", json={"item_id": "it1", "text": "수정됨"}
-    )
+    r = client.put(f"/api/sessions/{sid}/drafts", json={"item_id": "it1", "text": "수정됨"})
     assert r.status_code == 409
 
 

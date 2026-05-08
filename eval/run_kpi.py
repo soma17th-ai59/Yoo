@@ -12,16 +12,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import statistics
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
 from backend.app.hwpx.parser import parse_hwpx
 from backend.app.pii import output_guard
 from backend.app.pii.form_detector import flag_pii_items
-
 
 ROOT = Path(__file__).parent
 FORMS_DIR = ROOT / "forms"
@@ -162,7 +159,9 @@ def main(argv: list[str] | None = None) -> int:
     k1_passed = k1_f1 >= K1_TARGET
     print(_row("K1 form-blank F1", f"{k1_f1:.3f}", f"≥ {K1_TARGET:.2f}", k1_passed))
     for fid, scores in k1["per_form"].items():
-        print(f"      └─ {fid}: P={scores['precision']:.2f} R={scores['recall']:.2f} F1={scores['f1']:.2f}")
+        print(
+            f"      └─ {fid}: P={scores['precision']:.2f} R={scores['recall']:.2f} F1={scores['f1']:.2f}"
+        )
 
     # K5 — always runs (over fixture materials)
     k5 = compute_k5(MATERIALS_DIR)

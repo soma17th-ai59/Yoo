@@ -59,15 +59,15 @@ _FILL_RETURNS = [
 ]
 
 
-def test_fill_streams_node_progress_and_drafts(
-    client: TestClient, session_with_form_and_material
-):
+def test_fill_streams_node_progress_and_drafts(client: TestClient, session_with_form_and_material):
     sid = session_with_form_and_material
-    with patch(_FILL_PATCHES[0], return_value=_FILL_RETURNS[0]), \
-         patch(_FILL_PATCHES[1], return_value=_FILL_RETURNS[1]), \
-         patch(_FILL_PATCHES[2], return_value=_FILL_RETURNS[2]), \
-         patch(_FILL_PATCHES[3], return_value=_FILL_RETURNS[3]), \
-         patch(_FILL_PATCHES[4], return_value=_FILL_RETURNS[4]):
+    with (
+        patch(_FILL_PATCHES[0], return_value=_FILL_RETURNS[0]),
+        patch(_FILL_PATCHES[1], return_value=_FILL_RETURNS[1]),
+        patch(_FILL_PATCHES[2], return_value=_FILL_RETURNS[2]),
+        patch(_FILL_PATCHES[3], return_value=_FILL_RETURNS[3]),
+        patch(_FILL_PATCHES[4], return_value=_FILL_RETURNS[4]),
+    ):
         r = client.post(f"/api/sessions/{sid}/fill")
     assert r.status_code == 200
     body = r.text
@@ -76,15 +76,15 @@ def test_fill_streams_node_progress_and_drafts(
     assert "event: done" in body
 
 
-def test_fill_drafts_all_unlocked(
-    client: TestClient, session_with_form_and_material
-):
+def test_fill_drafts_all_unlocked(client: TestClient, session_with_form_and_material):
     sid = session_with_form_and_material
-    with patch(_FILL_PATCHES[0], return_value=_FILL_RETURNS[0]), \
-         patch(_FILL_PATCHES[1], return_value=_FILL_RETURNS[1]), \
-         patch(_FILL_PATCHES[2], return_value=_FILL_RETURNS[2]), \
-         patch(_FILL_PATCHES[3], return_value=_FILL_RETURNS[3]), \
-         patch(_FILL_PATCHES[4], return_value=_FILL_RETURNS[4]):
+    with (
+        patch(_FILL_PATCHES[0], return_value=_FILL_RETURNS[0]),
+        patch(_FILL_PATCHES[1], return_value=_FILL_RETURNS[1]),
+        patch(_FILL_PATCHES[2], return_value=_FILL_RETURNS[2]),
+        patch(_FILL_PATCHES[3], return_value=_FILL_RETURNS[3]),
+        patch(_FILL_PATCHES[4], return_value=_FILL_RETURNS[4]),
+    ):
         client.post(f"/api/sessions/{sid}/fill")
     session = store._sessions[sid]
     assert session.graph_state is not None

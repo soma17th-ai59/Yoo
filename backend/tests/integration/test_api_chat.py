@@ -29,7 +29,9 @@ def test_chat_404_for_unknown_session(client: TestClient):
 
 
 def test_chat_returns_plain_json_reply(client: TestClient, session_id):
-    with patch("backend.app.api.chat._solar_complete", return_value="안녕하세요. 무엇을 도와드릴까요?"):
+    with patch(
+        "backend.app.api.chat._solar_complete", return_value="안녕하세요. 무엇을 도와드릴까요?"
+    ):
         r = client.post("/api/chat", json={"session_id": session_id, "message": "안녕"})
     assert r.status_code == 200
     body = r.json()

@@ -8,13 +8,10 @@ generate_drafts(state: GraphState) -> dict
 
 from __future__ import annotations
 
-from unittest.mock import patch, call
+from unittest.mock import patch
 
-import pytest
-
-from backend.app.graph.state import GraphState, ItemPlan, DraftItem, MaterialBundle
-from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
-
+from backend.app.graph.state import DraftItem, GraphState, ItemPlan, MaterialBundle
+from backend.app.hwpx.models import FormDoc, Item
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -33,7 +30,9 @@ def _make_item(item_id: str, label: str = "항목", is_pii: bool = False) -> Ite
 
 
 def _make_form(*items: Item) -> FormDoc:
-    return FormDoc(sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[])
+    return FormDoc(
+        sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[]
+    )
 
 
 def _make_plan(
@@ -63,7 +62,10 @@ def _make_state(
     )
 
 
-_CLEAN_RESPONSE = {"text": "우수한 연구 성과를 바탕으로 작성된 내용입니다.", "citations": ["cv.pdf"]}
+_CLEAN_RESPONSE = {
+    "text": "우수한 연구 성과를 바탕으로 작성된 내용입니다.",
+    "citations": ["cv.pdf"],
+}
 _PII_RESPONSE = {"text": "홍길동 주민번호 901231-1234567 연구자입니다.", "citations": []}
 
 
@@ -86,10 +88,13 @@ class TestReturnShape:
         state = _make_state(form, [_make_plan("item1")])
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert "drafts" in result
@@ -107,10 +112,13 @@ class TestDraftItemFields:
         state = _make_state(form, [_make_plan("item1")])
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert all(isinstance(d, DraftItem) for d in result["drafts"])
@@ -120,10 +128,13 @@ class TestDraftItemFields:
         state = _make_state(form, [_make_plan("item1")])
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert result["drafts"][0].locked is False
@@ -133,10 +144,13 @@ class TestDraftItemFields:
         state = _make_state(form, [_make_plan("goal_item")])
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert result["drafts"][0].item_id == "goal_item"
@@ -146,10 +160,13 @@ class TestDraftItemFields:
         state = _make_state(form, [_make_plan("item1")])
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         d = result["drafts"][0]
@@ -165,15 +182,23 @@ class TestDraftItemFields:
 class TestPiiItemsSkipped:
     def test_pii_item_not_in_drafts(self):
         form = _make_form(_make_item("pii1", "성명", is_pii=True), _make_item("item1"))
-        pii_plan = ItemPlan(item_id="pii1", source_evidence=["pii_placeholder"], confidence=1.0, needs_question=False)
+        pii_plan = ItemPlan(
+            item_id="pii1",
+            source_evidence=["pii_placeholder"],
+            confidence=1.0,
+            needs_question=False,
+        )
         normal_plan = _make_plan("item1")
         state = _make_state(form, [pii_plan, normal_plan])
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         ids = [d.item_id for d in result["drafts"]]
@@ -200,10 +225,13 @@ class TestNeedsQuestionPlaceholder:
         state = _make_state(form, plans)
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         ids = [d.item_id for d in result["drafts"]]
@@ -220,8 +248,11 @@ class TestNeedsQuestionPlaceholder:
         plans = [_make_plan("q_item", needs_question=True, question=None)]
         state = _make_state(form, plans)
 
-        with patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE):
+        with patch(
+            "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+        ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert len(result["drafts"]) == 1
@@ -251,6 +282,7 @@ class TestOutputGuardRetry:
             patch("backend.app.graph.nodes.generator.scan", side_effect=scan_results),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert result["drafts"][0].text == _CLEAN_RESPONSE["text"]
@@ -271,6 +303,7 @@ class TestFallbackAfterMaxRetries:
             patch("backend.app.graph.nodes.generator.scan", return_value=(False, "[MASKED]")),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert result["drafts"][0].text == "[확인 필요]"
@@ -284,6 +317,7 @@ class TestFallbackAfterMaxRetries:
             patch("backend.app.graph.nodes.generator.scan", return_value=(False, "[MASKED]")),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             result = generate_drafts(state)
 
         assert result["drafts"][0].citations == []
@@ -300,6 +334,7 @@ class TestEmptyPlans:
         state = _make_state(form, plans=[])
 
         from backend.app.graph.nodes.generator import generate_drafts
+
         result = generate_drafts(state)
 
         assert result["drafts"] == []
@@ -308,6 +343,7 @@ class TestEmptyPlans:
         state = _make_state(form_doc=None, plans=[_make_plan("item1")])
 
         from backend.app.graph.nodes.generator import generate_drafts
+
         result = generate_drafts(state)
 
         assert result["drafts"] == []
@@ -326,10 +362,13 @@ class TestStateMutation:
         original_plans = list(state.plans)
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             generate_drafts(state)
 
         assert state.plans == original_plans
@@ -340,10 +379,13 @@ class TestStateMutation:
         original_drafts = list(state.drafts)
 
         with (
-            patch("backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE),
+            patch(
+                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
+            ),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
+
             generate_drafts(state)
 
         assert state.drafts == original_drafts

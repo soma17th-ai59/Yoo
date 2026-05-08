@@ -12,7 +12,7 @@ Zero LangGraph imports per module purity rules.
 
 from __future__ import annotations
 
-from backend.app.graph.state import GraphState, DraftItem
+from backend.app.graph.state import DraftItem, GraphState
 from backend.app.llm import solar as _solar_mod
 from backend.app.llm.prompts import build_verifier_messages
 

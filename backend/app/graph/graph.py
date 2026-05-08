@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
-from backend.app.graph.state import GraphState
 from backend.app.graph.nodes.form_parser import parse_form
+from backend.app.graph.nodes.generator import generate_drafts
 from backend.app.graph.nodes.material_ingestor import ingest_materials
 from backend.app.graph.nodes.planner import plan_items
-from backend.app.graph.nodes.generator import generate_drafts
 from backend.app.graph.nodes.verifier import verify_drafts
+from backend.app.graph.state import GraphState
 
 
 class SessionProvider(Protocol):
@@ -61,9 +61,7 @@ def build_compiled_graph(session_provider: SessionProvider):
         ("planner", "generator"),
         ("generator", "verifier"),
     ]:
-        g.add_conditional_edges(
-            from_node, _stop_on_error, {"continue": to_node, "END": END}
-        )
+        g.add_conditional_edges(from_node, _stop_on_error, {"continue": to_node, "END": END})
 
     g.add_edge("verifier", END)
 

@@ -22,9 +22,7 @@ def parse_hwpx(data: bytes) -> FormDoc:
 
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            section_names = sorted(
-                n for n in zf.namelist() if n.startswith("Contents/section")
-            )
+            section_names = sorted(n for n in zf.namelist() if n.startswith("Contents/section"))
             for name in section_names:
                 raw = zf.read(name)
                 tree = etree.fromstring(raw)
@@ -49,10 +47,7 @@ def parse_hwpx(data: bytes) -> FormDoc:
                 for tidx, tbl in enumerate(tree.iter(f"{_HP}tbl")):
                     rows = list(tbl.iter(f"{_HP}tr"))
                     headers = (
-                        [
-                            "".join(c.itertext()).strip()
-                            for c in rows[0].iter(f"{_HP}tc")
-                        ]
+                        ["".join(c.itertext()).strip() for c in rows[0].iter(f"{_HP}tc")]
                         if rows
                         else []
                     )

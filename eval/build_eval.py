@@ -57,8 +57,7 @@ class FormSpec:
 
 def _section_xml(spec: FormSpec) -> bytes:
     para_blocks = "\n".join(
-        f"  <hp:p><hp:run><hp:t>{label}</hp:t></hp:run></hp:p>"
-        for label, _ in spec.paragraphs
+        f"  <hp:p><hp:run><hp:t>{label}</hp:t></hp:run></hp:p>" for label, _ in spec.paragraphs
     )
     header_cells = "\n      ".join(
         f"<hp:tc><hp:subList><hp:p><hp:run><hp:t>{h}</hp:t></hp:run></hp:p></hp:subList></hp:tc>"
@@ -82,7 +81,7 @@ def _section_xml(spec: FormSpec) -> bytes:
     </hp:tr>
   </hp:tbl>
 </hs:sec>
-""".encode("utf-8")
+""".encode()
 
 
 def _write_hwpx(spec: FormSpec) -> Path:
@@ -203,12 +202,12 @@ class PersonaMaterials:
     cv_text: str
     plan_title: str
     plan_summary: str
-    plan_budget_rows: list[tuple[str, str, str]]   # (항목, 금액(만원), 사용 사유)
-    plan_schedule_rows: list[tuple[str, str, str]] # (분기, 마일스톤, 산출물)
+    plan_budget_rows: list[tuple[str, str, str]]  # (항목, 금액(만원), 사용 사유)
+    plan_schedule_rows: list[tuple[str, str, str]]  # (분기, 마일스톤, 산출물)
     report_title: str
     report_intro: str
     report_results_rows: list[tuple[str, str, str, str]]  # (모델, 데이터, 지표, 점수)
-    report_comparison_rows: list[tuple[str, str, str]]    # (조건, 정확도, 비고)
+    report_comparison_rows: list[tuple[str, str, str]]  # (조건, 정확도, 비고)
 
 
 PERSONAS: list[PersonaMaterials] = [
@@ -290,8 +289,8 @@ PERSONAS: list[PersonaMaterials] = [
             "관심 분야: 헬스케어 NLP, 한국어 임상 노트 요약, ClinicalBERT-Ko\n\n"
             "## 학술 활동\n"
             "- 한국정보과학회 2025 동계 워크숍 포스터 발표\n"
-            "  · 제목: \"한국어 임상 노트의 추출형 요약을 위한 도메인 적응 BERT 분석\"\n"
-            "- 학부 졸업논문(2024): \"의료 도메인 토큰화 전략 비교 연구\"\n\n"
+            '  · 제목: "한국어 임상 노트의 추출형 요약을 위한 도메인 적응 BERT 분석"\n'
+            '- 학부 졸업논문(2024): "의료 도메인 토큰화 전략 비교 연구"\n\n'
             "## 보유 경험\n"
             "- 임상 텍스트 사전처리 파이프라인(자체 구현, 2024) — 의료 약어 정규화 모듈 포함\n"
             "- ClinicalBERT-Ko 사전훈련 모델 fine-tune 경험 (3개 task)\n"
@@ -355,7 +354,7 @@ PERSONAS: list[PersonaMaterials] = [
             "관심 분야: 멀티모달 학습, 영상-텍스트 결합 추론, 한국어 OOD 견고성\n\n"
             "## 학술 활동\n"
             "- 국내 학술지 게재 1편 (한국정보과학회논문지, 2025): "
-            "\"한국어 멀티모달 모델의 분포 외 입력에 대한 견고성 분석\"\n"
+            '"한국어 멀티모달 모델의 분포 외 입력에 대한 견고성 분석"\n'
             "- 국제 컨퍼런스 워크숍 발표 1편 (NeurIPS Multimodal Workshop, 2024)\n\n"
             "## 보유 경험\n"
             "- CLIP·BLIP·OFA 등 4개 멀티모달 모델 패밀리 평가 파이프라인 구축\n"
@@ -519,9 +518,7 @@ def main() -> None:
         print(f"wrote {path} ({path.stat().st_size} bytes)")
         labels_out.append(_labels_from_parser(spec, path.read_bytes()))
 
-    LABELS_PATH.write_text(
-        json.dumps(labels_out, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    LABELS_PATH.write_text(json.dumps(labels_out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"wrote {LABELS_PATH}")
 
     try:

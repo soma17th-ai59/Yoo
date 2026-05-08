@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 import httpx
 import streamlit as st
 import streamlit.components.v1 as components
-
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -131,8 +130,6 @@ def _stream_fill() -> Iterator[tuple[str, str]]:
             yield event, "\n".join(data)
 
 
-
-
 def _reset_state() -> None:
     for key, default in _DEFAULTS.items():
         if key == "session_id":
@@ -217,9 +214,7 @@ def _save_draft_edit(item_id: str, text: str) -> bool:
 def _fetch_output_bytes() -> bytes | None:
     sid = st.session_state.session_id
     try:
-        r = httpx.get(
-            f"{_current_backend()}/api/sessions/{sid}/output.hwpx", timeout=60.0
-        )
+        r = httpx.get(f"{_current_backend()}/api/sessions/{sid}/output.hwpx", timeout=60.0)
         r.raise_for_status()
         return r.content
     except Exception as exc:
@@ -251,7 +246,6 @@ def _is_unfilled(text: str) -> bool:
 
 
 from frontend.extract_body import extract_body as _extract_body  # noqa: E402
-
 
 # --- sidebar ---------------------------------------------------------------
 
@@ -528,7 +522,8 @@ if st.session_state.drafts:
 
                     with st.form(f"chat_form_{item_id}", clear_on_submit=True):
                         typed = st.text_input(
-                            "메시지", key=f"chat_input_{item_id}",
+                            "메시지",
+                            key=f"chat_input_{item_id}",
                             label_visibility="collapsed",
                             placeholder="이 항목에 대한 정보를 입력하거나 질문하세요…",
                         )
@@ -577,9 +572,7 @@ def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
 
     pii_items = [it for it in items if it.get("is_pii")]
     gap_items = [
-        it
-        for it in items
-        if not it.get("is_pii") and it.get("item_id") not in drafted_ids
+        it for it in items if not it.get("is_pii") and it.get("item_id") not in drafted_ids
     ]
     return pii_items, gap_items
 
@@ -590,7 +583,9 @@ if st.session_state.form_doc and st.session_state.drafts:
         with st.container(border=True):
             st.markdown("### ✍️ 직접 작성이 필요한 항목")
             if pii_items:
-                st.markdown("**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**")
+                st.markdown(
+                    "**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**"
+                )
                 for it in pii_items:
                     st.markdown(f"- {it.get('label', '?')}")
             if gap_items:
@@ -600,4 +595,3 @@ if st.session_state.form_doc and st.session_state.drafts:
                 st.caption(
                     "💡 채팅으로 정보를 더 알려주시거나, 다운로드한 .hwpx에서 직접 채우세요."
                 )
-

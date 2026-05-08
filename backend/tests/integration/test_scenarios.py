@@ -61,8 +61,11 @@ async def test_full_flow_fill_apply_download(client: TestClient):
         assert all(d.locked is False for d in state.drafts)
 
         target_id = next(
-            (d.item_id for d in state.drafts
-             if not any(it.item_id == d.item_id and it.is_pii for it in state.form_doc.items)),
+            (
+                d.item_id
+                for d in state.drafts
+                if not any(it.item_id == d.item_id and it.is_pii for it in state.form_doc.items)
+            ),
             None,
         )
         assert target_id is not None

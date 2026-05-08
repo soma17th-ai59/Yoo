@@ -13,7 +13,7 @@ ADDRESS and AFFILIATION go through the Presidio analyze→anonymize pipeline.
 
 import re
 
-from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern, RecognizerRegistry
+from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer, RecognizerRegistry
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
@@ -87,6 +87,7 @@ def _make_affiliation_recognizer() -> PatternRecognizer:
 
 # ── Engine construction ───────────────────────────────────────────────────────
 
+
 def _build_engine() -> tuple[AnalyzerEngine, AnonymizerEngine]:
     recognizers = [
         _make_address_recognizer(),
@@ -99,10 +100,12 @@ def _build_engine() -> tuple[AnalyzerEngine, AnonymizerEngine]:
         supported_languages=["ko"],
     )
 
-    nlp_engine = NlpEngineProvider(nlp_configuration={
-        "nlp_engine_name": "spacy",
-        "models": [{"lang_code": "ko", "model_name": "ko_core_news_sm"}],
-    }).create_engine()
+    nlp_engine = NlpEngineProvider(
+        nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "ko", "model_name": "ko_core_news_sm"}],
+        }
+    ).create_engine()
 
     analyzer = AnalyzerEngine(
         registry=registry,

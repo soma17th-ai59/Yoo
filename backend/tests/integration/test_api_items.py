@@ -22,8 +22,17 @@ async def session_with_drafts(client: TestClient):
     form = FormDoc(
         sections=["s1"],
         items=[
-            Item(item_id="it1", label="자기소개", section="s1", kind="paragraph", xml_xpath="/p[1]"),
-            Item(item_id="pii1", label="성명", section="s1", kind="paragraph", xml_xpath="/p[2]", is_pii=True),
+            Item(
+                item_id="it1", label="자기소개", section="s1", kind="paragraph", xml_xpath="/p[1]"
+            ),
+            Item(
+                item_id="pii1",
+                label="성명",
+                section="s1",
+                kind="paragraph",
+                xml_xpath="/p[2]",
+                is_pii=True,
+            ),
         ],
         tables=[],
         placeholders=[],

@@ -95,10 +95,14 @@ def build_planner_messages(form_doc: FormDoc, materials: list[dict]) -> list[dic
 
     # summary must be a metadata-level field (not raw extracted text) — callers
     # are responsible for ensuring it does not contain unmasked PII.
-    materials_summary = "\n".join(
-        f"- filename: {mat['filename']} | summary: {mat.get('summary', '')}"
-        for mat in materials
-    ) if materials else "참고자료 없음"
+    materials_summary = (
+        "\n".join(
+            f"- filename: {mat['filename']} | summary: {mat.get('summary', '')}"
+            for mat in materials
+        )
+        if materials
+        else "참고자료 없음"
+    )
 
     user_content = f"""\
 ## 양식 항목 목록
@@ -125,21 +129,27 @@ def build_generator_messages(
     target_item = next((i for i in form_doc.items if i.item_id == item_id), None)
 
     if target_item is not None:
-        item_detail = (
-            f"label: {target_item.label}\n"
-            f"section: {target_item.section}\n"
-            + (f"expected_chars: {target_item.expected_chars}\n" if target_item.expected_chars is not None else "")
+        item_detail = f"label: {target_item.label}\nsection: {target_item.section}\n" + (
+            f"expected_chars: {target_item.expected_chars}\n"
+            if target_item.expected_chars is not None
+            else ""
         )
     else:
         item_detail = f"item_id: {item_id}"
 
     source_ids: set[str] = set(item_plan.get("source_evidence", []))
-    relevant_mats = [m for m in materials if m["filename"] in source_ids] if source_ids else materials
+    relevant_mats = (
+        [m for m in materials if m["filename"] in source_ids] if source_ids else materials
+    )
 
-    materials_text = "\n\n".join(
-        f"[{mat['filename']}]\n{mat.get('masked_text', mat.get('summary', ''))}"
-        for mat in relevant_mats
-    ) if relevant_mats else "참고자료 없음"
+    materials_text = (
+        "\n\n".join(
+            f"[{mat['filename']}]\n{mat.get('masked_text', mat.get('summary', ''))}"
+            for mat in relevant_mats
+        )
+        if relevant_mats
+        else "참고자료 없음"
+    )
 
     user_content = f"""\
 ## 작성 대상 항목
@@ -169,10 +179,10 @@ def build_verifier_messages(
 
     item_context = ""
     if target_item is not None:
-        item_context = (
-            f"label: {target_item.label}\n"
-            f"section: {target_item.section}\n"
-            + (f"expected_chars: {target_item.expected_chars}\n" if target_item.expected_chars is not None else "")
+        item_context = f"label: {target_item.label}\nsection: {target_item.section}\n" + (
+            f"expected_chars: {target_item.expected_chars}\n"
+            if target_item.expected_chars is not None
+            else ""
         )
 
     citations: list[str] = draft.get("citations", [])

@@ -1,7 +1,9 @@
 """Tests for pii.regex_masker — covering all token types, including negative cases."""
+
 from backend.app.pii.regex_masker import mask
 
 # ── 주민번호 (JUMIN) ─────────────────────────────────────────────────────────
+
 
 def test_mask_jumin_hyphen():
     assert mask("주민 901231-1234567 입니다") == "주민 [JUMIN] 입니다"
@@ -23,6 +25,7 @@ def test_mask_jumin_multiple():
 
 # ── Korean-adjacent PII (regression: \b doesn't separate Korean from digits)
 
+
 def test_mask_jumin_flush_against_korean():
     """주민번호 immediately preceded/followed by Korean syllables must mask.
     Previously \b failed because Korean syllables are \w in Python regex."""
@@ -39,6 +42,7 @@ def test_mask_phone_intl_flush_against_korean():
 
 # ── 카드 (CARD) ──────────────────────────────────────────────────────────────
 
+
 def test_mask_card_hyphen():
     assert mask("카드 1234-5678-9012-3456") == "카드 [CARD]"
 
@@ -52,6 +56,7 @@ def test_mask_card_plain():
 
 
 # ── 계좌 (ACCOUNT) ───────────────────────────────────────────────────────────
+
 
 def test_mask_account_kb():
     # 국민은행 형식 XXX-XX-XXXXXX (11자리)
@@ -75,6 +80,7 @@ def test_mask_account_plain_digits():
 
 # ── 전화번호 (PHONE) ─────────────────────────────────────────────────────────
 
+
 def test_mask_phone_mobile():
     assert mask("연락처 010-1234-5678") == "연락처 [PHONE]"
 
@@ -97,6 +103,7 @@ def test_mask_phone_no_hyphen_mobile():
 
 # ── 이메일 (EMAIL) ───────────────────────────────────────────────────────────
 
+
 def test_mask_email_basic():
     assert mask("연락 abc@def.kr") == "연락 [EMAIL]"
 
@@ -111,6 +118,7 @@ def test_mask_email_multiple():
 
 
 # ── 금액 (MONEY) ─────────────────────────────────────────────────────────────
+
 
 def test_mask_money_won_sign():
     assert mask("금액 ₩1,000,000 청구") == "금액 [MONEY] 청구"
@@ -129,6 +137,7 @@ def test_mask_money_plain_won():
 
 
 # ── 부정 사례 (false-positive guards) ────────────────────────────────────────
+
 
 def test_no_mask_research_period():
     # Hyphenated year range must not be treated as an account number.
@@ -161,6 +170,7 @@ def test_no_mask_product_code_16digit():
 
 
 # ── 키워드 접두사 보존 ───────────────────────────────────────────────────────
+
 
 def test_account_keyword_prefix_preserved():
     assert mask("계좌번호:  12345678901234") == "계좌번호:  [ACCOUNT]"

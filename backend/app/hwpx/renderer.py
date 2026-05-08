@@ -29,7 +29,9 @@ def apply_drafts(src: bytes, drafts: list[DraftItem]) -> bytes:
     out_buf = io.BytesIO()
     zout = zipfile.ZipFile(out_buf, "w", compression=zipfile.ZIP_DEFLATED)
 
-    zout.writestr(zipfile.ZipInfo("mimetype"), b"application/hwp+zip", compress_type=zipfile.ZIP_STORED)
+    zout.writestr(
+        zipfile.ZipInfo("mimetype"), b"application/hwp+zip", compress_type=zipfile.ZIP_STORED
+    )
 
     for name in src_zip.namelist():
         if name == "mimetype":

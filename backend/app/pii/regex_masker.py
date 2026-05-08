@@ -16,16 +16,12 @@ import re
 # Hyphenated only: no-hyphen form over-matches ISBNs/barcodes/product codes.
 # Use digit-aware lookaround instead of \b so Korean-adjacent matches still
 # fire — \b doesn't separate Korean syllables from digits in Python regex.
-_JUMIN = re.compile(
-    r"(?<!\d)\d{6}-[1-9]\d{6}(?!\d)"
-)
+_JUMIN = re.compile(r"(?<!\d)\d{6}-[1-9]\d{6}(?!\d)")
 
 # 4-4-4-4 delimited form is precise; plain 16-digit is gated by card keyword.
-_CARD_DELIMITED = re.compile(
-    r"(?<!\d)\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}(?!\d)"
-)
+_CARD_DELIMITED = re.compile(r"(?<!\d)\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}(?!\d)")
 _CARD_PLAIN = re.compile(
-    r"(?:카드|신용|체크)[번호\s:：]*(\d{16})(?!\d)"   # keyword-gated plain 16 digits
+    r"(?:카드|신용|체크)[번호\s:：]*(\d{16})(?!\d)"  # keyword-gated plain 16 digits
 )
 
 # Hyphenated bank account formats: keyword-gated to avoid project/document numbers.
@@ -41,21 +37,20 @@ _ACCOUNT_KEYWORD = re.compile(
 )
 
 _PHONE = re.compile(
-    r"\+82[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"   # +82-XX-XXXX-XXXX
-    r"|(?<!\d)0\d{1,2}-\d{3,4}-\d{4}(?!\d)"              # 02-/010-/031- (hyphenated)
-    r"|(?<!\d)01[016789]\d{7,8}(?!\d)",                   # 010/011/016/017/018/019 no hyphen
+    r"\+82[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)"  # +82-XX-XXXX-XXXX
+    r"|(?<!\d)0\d{1,2}-\d{3,4}-\d{4}(?!\d)"  # 02-/010-/031- (hyphenated)
+    r"|(?<!\d)01[016789]\d{7,8}(?!\d)",  # 010/011/016/017/018/019 no hyphen
 )
 
-_EMAIL = re.compile(
-    r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
-)
+_EMAIL = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 
 _MONEY = re.compile(
-    r"₩[\d,]+"                     # ₩1,000,000
+    r"₩[\d,]+"  # ₩1,000,000
     r"|\d[\d,]*(?:억원|만원|원)\b"  # 500만원 / 2억원 / 30000원
 )
 
 # ── ordered pipeline ──────────────────────────────────────────────────────────
+
 
 def _keyword_account_repl(m: re.Match) -> str:
     return m.group(1) + "[ACCOUNT]"

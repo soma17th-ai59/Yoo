@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from backend.app.hwpx.models import FormDoc, Item, Table, Placeholder
+from backend.app.hwpx.models import FormDoc, Item
 from backend.app.llm.prompts import (
-    PLANNER_SYS,
     GENERATOR_SYS,
+    PLANNER_SYS,
     VERIFIER_SYS,
-    build_planner_messages,
     build_generator_messages,
+    build_planner_messages,
     build_verifier_messages,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_form_doc() -> FormDoc:
     items = [
@@ -76,6 +76,7 @@ def _make_draft() -> dict:
 # System prompt content tests
 # ---------------------------------------------------------------------------
 
+
 class TestSystemPromptContent:
     def test_planner_sys_nonempty(self):
         assert isinstance(PLANNER_SYS, str)
@@ -97,7 +98,9 @@ class TestSystemPromptContent:
 
     def test_generator_sys_no_pii_instruction(self):
         # Must instruct the model NOT to include personal info
-        has_pii_warning = "이름" in GENERATOR_SYS or "주민번호" in GENERATOR_SYS or "개인정보" in GENERATOR_SYS
+        has_pii_warning = (
+            "이름" in GENERATOR_SYS or "주민번호" in GENERATOR_SYS or "개인정보" in GENERATOR_SYS
+        )
         assert has_pii_warning, "GENERATOR_SYS must warn against PII"
 
     def test_verifier_sys_nonempty(self):
@@ -113,6 +116,7 @@ class TestSystemPromptContent:
 # ---------------------------------------------------------------------------
 # build_planner_messages
 # ---------------------------------------------------------------------------
+
 
 class TestBuildPlannerMessages:
     def test_returns_list_of_dicts(self):
@@ -163,6 +167,7 @@ class TestBuildPlannerMessages:
 # ---------------------------------------------------------------------------
 # build_generator_messages
 # ---------------------------------------------------------------------------
+
 
 class TestBuildGeneratorMessages:
     def test_returns_list_of_dicts(self):
@@ -224,6 +229,7 @@ class TestBuildGeneratorMessages:
 # ---------------------------------------------------------------------------
 # build_verifier_messages
 # ---------------------------------------------------------------------------
+
 
 class TestBuildVerifierMessages:
     def test_returns_list_of_dicts(self):

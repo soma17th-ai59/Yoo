@@ -47,9 +47,7 @@ def test_apply_drafts_preserves_non_xml_members():
         assert out_infos[0].compress_type == zipfile.ZIP_STORED
 
         # non-section files are byte-identical
-        non_section = [
-            n for n in src_names if not n.startswith("Contents/section")
-        ]
+        non_section = [n for n in src_names if not n.startswith("Contents/section")]
         for name in non_section:
             assert zin.read(name) == zout.read(name), f"Mismatch in {name}"
 

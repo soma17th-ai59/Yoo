@@ -8,9 +8,10 @@ Zero LangGraph imports per module purity rules.
 
 from __future__ import annotations
 
-from backend.app.graph.state import GraphState, DraftItem as StateDraftItem
-from backend.app.hwpx.renderer import apply_drafts
+from backend.app.graph.state import DraftItem as StateDraftItem
+from backend.app.graph.state import GraphState
 from backend.app.hwpx.renderer import DraftItem as RendererDraftItem
+from backend.app.hwpx.renderer import apply_drafts
 
 _PII_DISPLAY_TEXT = "[본인 직접 입력]"
 

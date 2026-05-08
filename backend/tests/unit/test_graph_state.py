@@ -1,21 +1,17 @@
 """Tests for GraphState and related models in backend.app.graph.state."""
 
-import pytest
-from pydantic import ValidationError
-
 from backend.app.graph.state import (
     DraftItem,
     GraphState,
     ItemPlan,
-    MaterialBundle,
     append_turn,
 )
 from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
 
-
 # ---------------------------------------------------------------------------
 # 1. Default empty state
 # ---------------------------------------------------------------------------
+
 
 def test_graph_state_default_empty():
     state = GraphState()
@@ -31,6 +27,7 @@ def test_graph_state_default_empty():
 # ---------------------------------------------------------------------------
 # 2. model_dump produces expected dict shape
 # ---------------------------------------------------------------------------
+
 
 def test_graph_state_model_dump_shape():
     state = GraphState()
@@ -55,6 +52,7 @@ def test_graph_state_model_dump_shape():
 # 3. Round-trip serialization
 # ---------------------------------------------------------------------------
 
+
 def test_graph_state_round_trip():
     state = GraphState(
         errors=["테스트 오류"],
@@ -66,6 +64,7 @@ def test_graph_state_round_trip():
 # ---------------------------------------------------------------------------
 # 4. ItemPlan serializes/deserializes correctly
 # ---------------------------------------------------------------------------
+
 
 def test_item_plan_round_trip():
     plan = ItemPlan(
@@ -94,6 +93,7 @@ def test_item_plan_with_question():
 # 5. DraftItem serializes/deserializes correctly
 # ---------------------------------------------------------------------------
 
+
 def test_draft_item_round_trip():
     draft = DraftItem(
         item_id="sec0:p0",
@@ -114,6 +114,7 @@ def test_draft_item_defaults():
 # 6. append_turn basic
 # ---------------------------------------------------------------------------
 
+
 def test_append_turn_adds_entry():
     state = GraphState()
     new_state = append_turn(state, "user", "안녕")
@@ -133,6 +134,7 @@ def test_append_turn_multiple():
 # 7. append_turn with 12 turns keeps only last 10
 # ---------------------------------------------------------------------------
 
+
 def test_append_turn_truncation():
     state = GraphState()
     for i in range(12):
@@ -150,6 +152,7 @@ def test_append_turn_truncation():
 # 8. Original state is not mutated by append_turn
 # ---------------------------------------------------------------------------
 
+
 def test_append_turn_immutable():
     original = GraphState()
     _ = append_turn(original, "user", "변경 없음")
@@ -166,6 +169,7 @@ def test_append_turn_does_not_share_dict_references():
 # ---------------------------------------------------------------------------
 # 9. GraphState with form_doc round-trip
 # ---------------------------------------------------------------------------
+
 
 def test_graph_state_with_form_doc_round_trip():
     form_doc = FormDoc(

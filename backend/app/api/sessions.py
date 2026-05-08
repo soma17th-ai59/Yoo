@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
@@ -56,11 +56,19 @@ async def _stream_fill(session_id: str) -> AsyncIterator[dict]:
                     continue
                 accumulated.update(diff)
                 if diff.get("form_doc"):
-                    yield {"event": "form_parsed", "data": json.dumps(_to_jsonable(diff["form_doc"]))}
+                    yield {
+                        "event": "form_parsed",
+                        "data": json.dumps(_to_jsonable(diff["form_doc"])),
+                    }
                 if diff.get("drafts"):
                     yield {"event": "preview", "data": json.dumps(_to_jsonable(diff["drafts"]))}
                 if diff.get("errors"):
-                    yield {"event": "error", "data": json.dumps({"node": node_name, "error": "; ".join(str(e) for e in diff["errors"])})}
+                    yield {
+                        "event": "error",
+                        "data": json.dumps(
+                            {"node": node_name, "error": "; ".join(str(e) for e in diff["errors"])}
+                        ),
+                    }
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"error": str(exc)})}
         return
@@ -228,10 +236,12 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
         )
 
     plan = next((p for p in state.plans if p.item_id == item_id), None)
-    materials_brief = "\n".join(
-        f"- {m['filename']}: {m.get('summary', '')[:300]}"
-        for m in state.materials.docs[:6]
-    ) or "(자료 없음)"
+    materials_brief = (
+        "\n".join(
+            f"- {m['filename']}: {m.get('summary', '')[:300]}" for m in state.materials.docs[:6]
+        )
+        or "(자료 없음)"
+    )
 
     context = (
         f"## 작성 대상 항목\n"
@@ -320,7 +330,6 @@ async def session_debug(session_id: str):
         return {"saved_state": False}
     return {
         "saved_state": True,
-
         "errors": state.errors,
         "form_doc": {
             "items": [
@@ -330,10 +339,13 @@ async def session_debug(session_id: str):
         },
         "plans": [p.model_dump() for p in state.plans],
         "drafts": [d.model_dump() for d in state.drafts],
-
         "materials_count": len(state.materials.docs),
         "materials": [
-            {"doc_id": d.get("doc_id"), "filename": d.get("filename"), "summary": d.get("summary", "")[:160]}
+            {
+                "doc_id": d.get("doc_id"),
+                "filename": d.get("filename"),
+                "summary": d.get("summary", "")[:160],
+            }
             for d in state.materials.docs
         ],
     }
