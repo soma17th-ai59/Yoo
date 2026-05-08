@@ -71,8 +71,6 @@ _DEFAULTS = {
     "messages": [],
     "form_doc": None,
     "drafts": [],
-    "download_url": None,
-    "pending_question": None,
     "uploaded_form": None,
     "uploaded_materials": [],
     "fill_requested": False,
@@ -133,31 +131,6 @@ def _stream_fill() -> Iterator[tuple[str, str]]:
             yield event, "\n".join(data)
 
 
-def _stream_chat(message: str) -> Iterator[tuple[str, str]]:
-    sid = st.session_state.session_id
-    with httpx.stream(
-        "POST",
-        f"{BACKEND_URL}/api/chat",
-        json={"session_id": sid, "message": message},
-        timeout=120.0,
-    ) as r:
-        r.raise_for_status()
-        event = "message"
-        data: list[str] = []
-        for raw in r.iter_lines():
-            line = raw.rstrip("\r")
-            if line == "":
-                if data:
-                    yield event, "\n".join(data)
-                event = "message"
-                data = []
-                continue
-            if line.startswith("event:"):
-                event = line.split(":", 1)[1].strip()
-            elif line.startswith("data:"):
-                data.append(line.split(":", 1)[1].strip())
-        if data:
-            yield event, "\n".join(data)
 
 
 def _reset_state() -> None:
@@ -392,29 +365,21 @@ for m in st.session_state.messages:
         st.markdown(m["content"])
 
 
-def _process_stream(message: str) -> None:
-    """Consume an SSE stream and update session state."""
-    status = st.empty()
+def _process_chat(message: str) -> None:
+    sid = st.session_state.session_id
     try:
-        for event, data in _stream_chat(message):
-            payload = json.loads(data) if data else None
-            if event == "intent":
-                status.info(f"의도: `{payload['intent']}`")
-            elif event == "node_started":
-                status.write(f"… {payload['node']}")
-            elif event == "form_parsed":
-                st.session_state.form_doc = payload
-            elif event == "preview":
-                st.session_state.drafts = payload or []
-            elif event == "pending_question":
-                st.session_state.pending_question = payload
-            elif event == "done":
-                st.session_state.download_url = payload.get("download_url") if payload else None
-                status.success("완료")
-            elif event == "error":
-                st.error(f"오류: {payload.get('error') if payload else 'unknown'}")
+        r = httpx.post(
+            f"{_current_backend()}/api/chat",
+            json={"session_id": sid, "message": message},
+            timeout=120.0,
+        )
+        r.raise_for_status()
+        reply = r.json().get("reply", "")
     except Exception as exc:
         st.error(f"통신 오류: {exc}")
+        return
+    st.markdown(reply)
+    st.session_state.messages.append({"role": "assistant", "content": reply})
 
 
 user_msg = st.chat_input("무엇을 도와드릴까요?")
@@ -426,13 +391,7 @@ if user_msg:
         with st.chat_message("user"):
             st.markdown(user_msg)
         with st.chat_message("assistant"):
-            _process_stream(user_msg)
-            if st.session_state.drafts:
-                summary = f"초안 {len(st.session_state.drafts)}개 생성"
-                if st.session_state.download_url:
-                    summary += " — 우측 다운로드 버튼을 사용하세요."
-                st.markdown(summary)
-                st.session_state.messages.append({"role": "assistant", "content": summary})
+            _process_chat(user_msg)
 
 
 # --- drafts preview blocks -------------------------------------------------
@@ -575,31 +534,10 @@ if st.session_state.drafts:
                             st.rerun()
 
 
-# --- pending question ------------------------------------------------------
-
-if st.session_state.pending_question:
-    pq = st.session_state.pending_question
-    with st.container(border=True):
-        st.warning(f"❓ {pq.get('question', '추가 정보가 필요합니다.')}")
-        ans_key = f"answer_{pq.get('item_id', 'q')}"
-        ans = st.text_input("답변", key=ans_key)
-        if st.button("답변 전송", key=f"send_{pq.get('item_id', 'q')}"):
-            st.session_state.pending_question = None
-            st.session_state.messages.append({"role": "user", "content": ans})
-            _process_stream(ans)
-            st.rerun()
-
-
 # --- 직접 작성이 필요한 항목 안내 ------------------------------------------
 
 
 def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
-    """Return (pii_items, gap_items) — items the user needs to fill in manually.
-
-    pii_items   — flagged PII (Generator never writes these).
-    gap_items   — non-PII items with no draft yet (Planner didn't have enough
-                  to start, or Generator skipped them via needs_question).
-    """
     fd = st.session_state.form_doc or {}
     items = fd.get("items", [])
     drafted_ids = {d.get("item_id") for d in st.session_state.drafts}
@@ -613,7 +551,7 @@ def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
     return pii_items, gap_items
 
 
-if st.session_state.form_doc and (st.session_state.drafts or st.session_state.download_url):
+if st.session_state.form_doc and st.session_state.drafts:
     pii_items, gap_items = _needs_manual_entry()
     if pii_items or gap_items:
         with st.container(border=True):
@@ -630,21 +568,3 @@ if st.session_state.form_doc and (st.session_state.drafts or st.session_state.do
                     "💡 채팅으로 정보를 더 알려주시거나, 다운로드한 .hwpx에서 직접 채우세요."
                 )
 
-
-# --- download --------------------------------------------------------------
-
-if st.session_state.download_url:
-    unfilled_drafts = [
-        d for d in st.session_state.drafts if _is_unfilled(d.get("text", ""))
-    ]
-    if unfilled_drafts:
-        names = "\n".join(f"  • {_item_label(d.get('item_id'))}" for d in unfilled_drafts)
-        st.warning(
-            f"⚠ 다음 {len(unfilled_drafts)}개 항목이 아직 비어 있습니다 (`[추가 정보 필요]`). "
-            f"지금 다운로드하면 해당 항목은 비어 있는 채로 저장됩니다.\n\n{names}\n\n"
-            "💬 대화 또는 ✏ 수정으로 채운 뒤 다시 다운로드하세요."
-        )
-    st.link_button(
-        "📥 출력 .hwpx 다운로드",
-        f"{BACKEND_URL}{st.session_state.download_url}",
-    )
