@@ -2,15 +2,79 @@
 
 from __future__ import annotations
 
+import json
+from typing import AsyncIterator
+
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
+from backend.app.graph.graph import build_compiled_graph
 from backend.app.graph.nodes.renderer import render_output
+from backend.app.graph.state import GraphState
 from backend.app.llm import solar
 from backend.app.pii import mask_all
 from backend.app.session import store
 
 router = APIRouter()
+
+
+def _to_jsonable(obj):
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, list):
+        return [_to_jsonable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _to_jsonable(v) for k, v in obj.items()}
+    return obj
+
+
+async def _stream_fill(session_id: str) -> AsyncIterator[dict]:
+    session = await store.get(session_id)
+    if session is None or session.form_bytes is None:
+        yield {"event": "error", "data": json.dumps({"error": "양식이 업로드되지 않았습니다."})}
+        return
+    if not session.material_files:
+        yield {"event": "error", "data": json.dumps({"error": "자료가 업로드되지 않았습니다."})}
+        return
+
+    initial = GraphState(session_id=session_id)
+    if session.graph_state is not None:
+        initial.materials = session.graph_state.materials
+        initial.history = list(session.graph_state.history)
+
+    graph = build_compiled_graph(store)
+    accumulated: dict = {}
+
+    try:
+        async for chunk in graph.astream(initial, stream_mode="updates"):
+            if not isinstance(chunk, dict):
+                continue
+            for node_name, diff in chunk.items():
+                yield {"event": "node_started", "data": json.dumps({"node": node_name})}
+                if not isinstance(diff, dict):
+                    continue
+                accumulated.update(diff)
+                if diff.get("form_doc"):
+                    yield {"event": "form_parsed", "data": json.dumps(_to_jsonable(diff["form_doc"]))}
+                if diff.get("drafts"):
+                    yield {"event": "preview", "data": json.dumps(_to_jsonable(diff["drafts"]))}
+                if diff.get("errors"):
+                    yield {"event": "error", "data": json.dumps({"node": node_name, "error": "; ".join(str(e) for e in diff["errors"])})}
+    except Exception as exc:
+        yield {"event": "error", "data": json.dumps({"error": str(exc)})}
+        return
+
+    final_state = initial.model_copy(update=accumulated)
+    await store.save_state(session_id, final_state)
+    yield {"event": "done", "data": json.dumps({"draft_count": len(final_state.drafts)})}
+
+
+@router.post("/api/sessions/{session_id}/fill")
+async def fill(session_id: str):
+    if (await store.get(session_id)) is None:
+        raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+    return EventSourceResponse(_stream_fill(session_id))
 
 
 class DraftUpdate(BaseModel):
