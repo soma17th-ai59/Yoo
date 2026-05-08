@@ -165,11 +165,9 @@ def _reset_state() -> None:
         if key == "session_id":
             continue
         st.session_state[key] = default if not isinstance(default, list) else list(default)
-    # Clear per-draft action state from prior session
     for key in list(st.session_state.keys()):
         if key.startswith(
             (
-                "applied_",
                 "editing_",
                 "edit_text_",
                 "chatting_",
@@ -181,12 +179,51 @@ def _reset_state() -> None:
             del st.session_state[key]
 
 
+def _replace_draft(updated: dict) -> None:
+    for i, d in enumerate(st.session_state.drafts):
+        if d.get("item_id") == updated["item_id"]:
+            st.session_state.drafts[i] = updated
+            return
+
+
+def _apply_item(item_id: str) -> bool:
+    sid = st.session_state.session_id
+    try:
+        r = httpx.post(
+            f"{_current_backend()}/api/sessions/{sid}/items/apply",
+            json={"item_id": item_id},
+            timeout=10.0,
+        )
+        r.raise_for_status()
+        _replace_draft(r.json())
+        return True
+    except Exception as exc:
+        st.error(f"적용 실패: {exc}")
+        return False
+
+
+def _unlock_item(item_id: str) -> bool:
+    sid = st.session_state.session_id
+    try:
+        r = httpx.post(
+            f"{_current_backend()}/api/sessions/{sid}/items/unlock",
+            json={"item_id": item_id},
+            timeout=10.0,
+        )
+        r.raise_for_status()
+        _replace_draft(r.json())
+        return True
+    except Exception as exc:
+        st.error(f"해제 실패: {exc}")
+        return False
+
+
 def _save_draft_edit(item_id: str, text: str) -> bool:
-    """PUT the edited draft to the backend and re-render. Returns True on success."""
+    """PUT the edited draft to the backend. Returns True on success."""
     sid = st.session_state.session_id
     try:
         r = httpx.put(
-            f"{BACKEND_URL}/api/sessions/{sid}/drafts",
+            f"{_current_backend()}/api/sessions/{sid}/drafts",
             json={"item_id": item_id, "text": text},
             timeout=30.0,
         )
@@ -194,10 +231,13 @@ def _save_draft_edit(item_id: str, text: str) -> bool:
     except Exception as exc:
         st.error(f"저장 실패: {exc}")
         return False
-    for di in st.session_state.drafts:
-        if di.get("item_id") == item_id:
-            di["text"] = text
-            break
+    try:
+        _replace_draft(r.json())
+    except Exception:
+        for di in st.session_state.drafts:
+            if di.get("item_id") == item_id:
+                di["text"] = text
+                break
     return True
 
 
@@ -410,41 +450,42 @@ if st.session_state.drafts:
     st.subheader("작성된 초안")
     for d in st.session_state.drafts:
         item_id = d.get("item_id", "?")
-        applied = st.session_state.get(f"applied_{item_id}", False)
+        locked = bool(d.get("locked", False))
         editing = st.session_state.get(f"editing_{item_id}", False)
         chatting = st.session_state.get(f"chatting_{item_id}", False)
         label = _item_label(item_id)
         unfilled = _is_unfilled(d.get("text", ""))
 
         with st.container(border=True):
-            badge = ""
-            if applied:
-                badge = "✅"
-            elif unfilled:
-                badge = "⚠️ 미작성"
-            cols = st.columns([4, 1, 1, 1, 1])
+            badge = "🔒 적용됨" if locked else ("⚠️ 미작성" if unfilled else "")
+
+            if locked:
+                cols = st.columns([5, 1])
+                cols[0].markdown(f"**{label}** {badge}")
+                if cols[1].button("🔓 해제", key=f"unlock_{item_id}"):
+                    if _unlock_item(item_id):
+                        st.rerun()
+                st.write(d.get("text", ""))
+                citations = d.get("citations", [])
+                if citations:
+                    st.caption(f"근거: {', '.join(citations)}")
+                continue
+
+            cols = st.columns([4, 1, 1, 1])
             cols[0].markdown(f"**{label}** {badge}")
 
-            if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=applied or editing):
+            if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=editing):
                 if unfilled:
                     st.session_state[f"apply_warn_{item_id}"] = True
-                else:
-                    st.session_state[f"applied_{item_id}"] = True
-                    st.session_state.pop(f"apply_warn_{item_id}", None)
-                st.rerun()
+                    st.rerun()
+                elif _apply_item(item_id):
+                    st.rerun()
 
-            if cols[2].button("✏ 수정", key=f"edit_{item_id}", disabled=applied):
+            if cols[2].button("✏ 수정", key=f"edit_{item_id}"):
                 st.session_state[f"editing_{item_id}"] = not editing
                 st.rerun()
 
-            if cols[3].button("🔁 다시", key=f"redo_{item_id}", disabled=applied or editing):
-                redo_msg = f"{label} 항목을 다시 써줘"
-                st.session_state.messages.append({"role": "user", "content": redo_msg})
-                with st.chat_message("assistant"):
-                    _process_stream(redo_msg)
-                st.rerun()
-
-            if cols[4].button("💬 대화", key=f"chat_{item_id}", disabled=applied):
+            if cols[3].button("💬 대화", key=f"chat_{item_id}"):
                 st.session_state[f"chatting_{item_id}"] = not chatting
                 st.rerun()
 
@@ -480,12 +521,11 @@ if st.session_state.drafts:
                 hist_key = f"chat_history_{item_id}"
                 history = st.session_state.get(hist_key, [])
                 with st.container(border=True):
-                    st.markdown(f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다.")
+                    st.markdown(
+                        f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다."
+                    )
                     for m in history:
                         with st.chat_message(m["role"]):
-                            # Render as normal-body-sized plain text (no markdown
-                            # heading / bold escalation) so LLM responses stay
-                            # consistent with the rest of the page.
                             import html as _html
 
                             safe = _html.escape(m["content"]).replace("\n", "<br>")
@@ -496,7 +536,8 @@ if st.session_state.drafts:
 
                     with st.form(f"chat_form_{item_id}", clear_on_submit=True):
                         typed = st.text_input(
-                            "메시지", key=f"chat_input_{item_id}", label_visibility="collapsed",
+                            "메시지", key=f"chat_input_{item_id}",
+                            label_visibility="collapsed",
                             placeholder="이 항목에 대한 정보를 입력하거나 질문하세요…",
                         )
                         send = st.form_submit_button("전송")
@@ -525,10 +566,10 @@ if st.session_state.drafts:
                             disabled=not body_preview,
                         ):
                             if body_preview and _save_draft_edit(item_id, body_preview):
-                                st.session_state[f"chatting_{item_id}"] = False
-                                st.session_state[f"applied_{item_id}"] = True
-                                st.session_state[hist_key] = []
-                                st.rerun()
+                                if _apply_item(item_id):
+                                    st.session_state[f"chatting_{item_id}"] = False
+                                    st.session_state[hist_key] = []
+                                    st.rerun()
                         if action_cols[1].button("대화 닫기", key=f"close_chat_{item_id}"):
                             st.session_state[f"chatting_{item_id}"] = False
                             st.rerun()
