@@ -168,34 +168,29 @@ async def create_session():
 
 @router.put("/api/sessions/{session_id}/drafts")
 async def update_draft(session_id: str, payload: DraftUpdate):
-    """Replace one draft's text in the saved graph state and re-render output."""
+    """Replace one draft's text. Locked drafts return 409 — unlock first."""
     session = await store.get(session_id)
     if session is None or session.graph_state is None:
         raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
     state = session.graph_state
     if state.form_doc is None:
-        raise HTTPException(status_code=400, detail="form_doc이 없어 재렌더링 불가.")
+        raise HTTPException(status_code=400, detail="form_doc이 없습니다.")
 
-    if not any(d.item_id == payload.item_id for d in state.drafts):
+    target = next((d for d in state.drafts if d.item_id == payload.item_id), None)
+    if target is None:
         raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+    if target.locked:
+        raise HTTPException(status_code=409, detail="잠긴 항목은 수정 전에 🔓 해제가 필요합니다.")
 
     new_drafts = [
-        d.model_copy(update={"text": payload.text, "locked": True})
-        if d.item_id == payload.item_id
-        else d
+        d.model_copy(update={"text": payload.text}) if d.item_id == payload.item_id else d
         for d in state.drafts
     ]
     new_state = state.model_copy(update={"drafts": new_drafts})
     await store.save_state(session_id, new_state)
 
-    form_bytes = store.get_form_bytes(session_id)
-    if form_bytes:
-        result = render_output(new_state, form_bytes)
-        rendered = result.get("rendered_bytes", b"")
-        if rendered:
-            store.put_rendered_bytes(session_id, rendered)
-
-    return {"ok": True, "item_id": payload.item_id}
+    updated = next(d for d in new_state.drafts if d.item_id == payload.item_id)
+    return updated.model_dump()
 
 
 @router.post("/api/sessions/{session_id}/item-chat")
