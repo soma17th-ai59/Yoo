@@ -8,7 +8,6 @@ from backend.app.graph.state import (
     GraphState,
     ItemPlan,
     MaterialBundle,
-    PendingQuestion,
     append_turn,
 )
 from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
@@ -21,14 +20,10 @@ from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
 def test_graph_state_default_empty():
     state = GraphState()
     assert state.session_id is None
-    assert state.intent is None
-    assert state.user_message is None
     assert state.form_doc is None
     assert state.materials.docs == []
     assert state.plans == []
     assert state.drafts == []
-    assert state.pending_question is None
-    assert state.pending_answer is None
     assert state.history == []
     assert state.errors == []
 
@@ -42,14 +37,10 @@ def test_graph_state_model_dump_shape():
     d = state.model_dump()
     assert set(d.keys()) == {
         "session_id",
-        "intent",
-        "user_message",
         "form_doc",
         "materials",
         "plans",
         "drafts",
-        "pending_question",
-        "pending_answer",
         "history",
         "errors",
     }
@@ -66,8 +57,6 @@ def test_graph_state_model_dump_shape():
 
 def test_graph_state_round_trip():
     state = GraphState(
-        intent="start_fill",
-        user_message="안녕하세요",
         errors=["테스트 오류"],
     )
     restored = GraphState.model_validate(state.model_dump())
@@ -210,32 +199,3 @@ def test_graph_state_with_form_doc_round_trip():
     assert restored == state
     assert restored.form_doc is not None
     assert restored.form_doc.items[0].label == "연구 목표"
-
-
-# ---------------------------------------------------------------------------
-# 10. intent field only accepts the 7 defined literals
-# ---------------------------------------------------------------------------
-
-def test_intent_valid_literals():
-    valid = [
-        "upload_form",
-        "upload_material",
-        "start_fill",
-        "rewrite_item",
-        "change_tone",
-        "add_material",
-        "general_qa",
-    ]
-    for v in valid:
-        state = GraphState(intent=v)
-        assert state.intent == v
-
-
-def test_intent_rejects_invalid():
-    with pytest.raises(ValidationError):
-        GraphState(intent="unknown_intent")
-
-
-def test_intent_none_is_valid():
-    state = GraphState(intent=None)
-    assert state.intent is None
