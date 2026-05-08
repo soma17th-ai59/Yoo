@@ -264,11 +264,20 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
 
 @router.get("/api/sessions/{session_id}/output.hwpx")
 async def download_output(session_id: str):
+    """Lazy render — build .hwpx from currently locked drafts at request time."""
     session = await store.get(session_id)
-    if session is None or not session.rendered_bytes:
-        raise HTTPException(status_code=404, detail="렌더된 출력이 없습니다.")
+    if session is None:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if session.form_bytes is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="양식 또는 graph_state가 없습니다.")
+
+    result = render_output(session.graph_state, session.form_bytes)
+    rendered = result.get("rendered_bytes", b"")
+    if not rendered:
+        raise HTTPException(status_code=500, detail="렌더 실패")
+
     return Response(
-        content=session.rendered_bytes,
+        content=rendered,
         media_type="application/vnd.hancom.hwpx",
         headers={"Content-Disposition": 'attachment; filename="output.hwpx"'},
     )
