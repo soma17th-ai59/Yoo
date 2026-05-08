@@ -22,16 +22,19 @@ def _cell_text(tc: etree._Element) -> str:
 
 def _label_for_cell(grid: list[list[str]], r: int, c: int) -> str:
     """Heuristic for empty-cell labels:
-    1. nearest non-empty neighbor on the LEFT in same row
-    2. nearest non-empty cell ABOVE in same column
+    1. nearest non-empty cell ABOVE in same column (header-row pattern is the
+       most common shape; users filling row N+1 should not start labelling
+       its right-side empties with row N+1's own filled-in text)
+    2. nearest non-empty neighbor on the LEFT in same row (2-col label/value
+       pairs with no header row above)
     3. fallback '(표 셀 r{R}c{C})'
     """
-    for cc in range(c - 1, -1, -1):
-        if grid[r][cc]:
-            return grid[r][cc]
     for rr in range(r - 1, -1, -1):
         if c < len(grid[rr]) and grid[rr][c]:
             return grid[rr][c]
+    for cc in range(c - 1, -1, -1):
+        if grid[r][cc]:
+            return grid[r][cc]
     return f"(표 셀 r{r}c{c})"
 
 
