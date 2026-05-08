@@ -9,11 +9,8 @@ resume_with_answer(state: GraphState, answer: str) -> dict
 
 from __future__ import annotations
 
-import pytest
-
-from backend.app.graph.state import GraphState, ItemPlan, DraftItem, PendingQuestion, MaterialBundle
-from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
-
+from backend.app.graph.state import DraftItem, GraphState, ItemPlan, PendingQuestion
+from backend.app.hwpx.models import FormDoc, Item
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,7 +28,9 @@ def _make_item(item_id: str, label: str = "항목") -> Item:
 
 
 def _make_form(*items: Item) -> FormDoc:
-    return FormDoc(sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[])
+    return FormDoc(
+        sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[]
+    )
 
 
 def _make_plan(item_id: str, needs_question: bool = False, question: str | None = None) -> ItemPlan:
@@ -74,6 +73,7 @@ class TestAskQuestion:
         state = _make_state(plans=plans)
 
         from backend.app.graph.nodes.question import ask_question
+
         result = ask_question(state)
 
         assert result["pending_question"] is not None
@@ -85,6 +85,7 @@ class TestAskQuestion:
         state = _make_state(plans=plans)
 
         from backend.app.graph.nodes.question import ask_question
+
         result = ask_question(state)
 
         assert isinstance(result["pending_question"], PendingQuestion)
@@ -94,6 +95,7 @@ class TestAskQuestion:
         state = _make_state(plans=plans)
 
         from backend.app.graph.nodes.question import ask_question
+
         result = ask_question(state)
 
         assert result["pending_question"] is not None
@@ -111,6 +113,7 @@ class TestAskQuestionNoPending:
         state = _make_state(plans=plans)
 
         from backend.app.graph.nodes.question import ask_question
+
         result = ask_question(state)
 
         assert result["pending_question"] is None
@@ -119,6 +122,7 @@ class TestAskQuestionNoPending:
         state = _make_state(plans=[])
 
         from backend.app.graph.nodes.question import ask_question
+
         result = ask_question(state)
 
         assert result["pending_question"] is None
@@ -130,6 +134,7 @@ class TestAskQuestionNoPending:
         state = _make_state(plans=plans, drafts=drafts)
 
         from backend.app.graph.nodes.question import ask_question
+
         result = ask_question(state)
 
         assert result["pending_question"] is None
@@ -147,6 +152,7 @@ class TestResumeWithAnswer:
         state = _make_state(plans=plans, pending_question=pq)
 
         from backend.app.graph.nodes.question import resume_with_answer
+
         result = resume_with_answer(state, "답변입니다.")
 
         assert result["pending_question"] is None
@@ -164,6 +170,7 @@ class TestResumeAddsEvidence:
         state = _make_state(plans=plans, pending_question=pq)
 
         from backend.app.graph.nodes.question import resume_with_answer
+
         result = resume_with_answer(state, "사용자의 답변")
 
         updated_plan = next(p for p in result["plans"] if p.item_id == "q1")
@@ -181,6 +188,7 @@ class TestResumeAddsEvidence:
         state = _make_state(plans=[plan], pending_question=pq)
 
         from backend.app.graph.nodes.question import resume_with_answer
+
         result = resume_with_answer(state, "새 답변")
 
         updated_plan = next(p for p in result["plans"] if p.item_id == "q1")
@@ -200,6 +208,7 @@ class TestResumeNeedsQuestionFalse:
         state = _make_state(plans=plans, pending_question=pq)
 
         from backend.app.graph.nodes.question import resume_with_answer
+
         result = resume_with_answer(state, "답변")
 
         updated_plan = next(p for p in result["plans"] if p.item_id == "q1")
@@ -214,6 +223,7 @@ class TestResumeNeedsQuestionFalse:
         state = _make_state(plans=plans, pending_question=pq)
 
         from backend.app.graph.nodes.question import resume_with_answer
+
         result = resume_with_answer(state, "답변")
 
         other_plan = next(p for p in result["plans"] if p.item_id == "item2")
@@ -233,6 +243,7 @@ class TestStateMutation:
         original_pending = state.pending_question
 
         from backend.app.graph.nodes.question import ask_question
+
         ask_question(state)
 
         assert state.pending_question == original_pending
@@ -244,6 +255,7 @@ class TestStateMutation:
         original_needs_question = state.plans[0].needs_question
 
         from backend.app.graph.nodes.question import resume_with_answer
+
         resume_with_answer(state, "답변")
 
         # Original state plan unchanged

@@ -55,7 +55,7 @@ SECTION0_XML = """\
     </hp:tr>
   </hp:tbl>
 </hs:sec>
-""".encode("utf-8")
+""".encode()
 
 
 def build() -> None:

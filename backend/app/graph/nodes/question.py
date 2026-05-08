@@ -21,7 +21,9 @@ def ask_question(state: GraphState) -> dict:
     for plan in state.plans:
         if plan.needs_question and plan.item_id not in drafted_ids:
             question_text = plan.question or "추가 정보를 입력해 주세요."
-            return {"pending_question": PendingQuestion(item_id=plan.item_id, question=question_text)}
+            return {
+                "pending_question": PendingQuestion(item_id=plan.item_id, question=question_text)
+            }
 
     return {"pending_question": None}
 

@@ -7,8 +7,8 @@ and plain 10-14 digit runs are all flagged.
 
 from backend.app.pii.output_guard import scan
 
-
 # ── 정상 텍스트 (clean text → True) ──────────────────────────────────────────
+
 
 def test_scan_clean_korean_text():
     assert scan("이 연구는 중요합니다.") == (True, "")
@@ -38,6 +38,7 @@ def test_scan_empty_string():
 
 # ── 주민번호 하이픈 형식 (JUMIN — hyphenated) ─────────────────────────────────
 
+
 def test_scan_detects_jumin_hyphenated():
     ok, reason = scan("주민 901231-1234567 입니다")
     assert ok is False
@@ -58,6 +59,7 @@ def test_scan_detects_jumin_in_sentence():
 
 # ── 주민번호 비하이픈 13자리 (JUMIN — unhyphenated 13-digit) ─────────────────
 
+
 def test_scan_detects_13digit_unhyphenated():
     """Stricter than masker: unhyphenated 13-digit sequences are flagged."""
     ok, reason = scan("번호 9012311234567")
@@ -72,6 +74,7 @@ def test_scan_detects_13digit_in_context():
 
 
 # ── 계좌번호 (ACCOUNT) ────────────────────────────────────────────────────────
+
 
 def test_scan_detects_account_14digit():
     ok, reason = scan("계좌 12345678901234")
@@ -93,6 +96,7 @@ def test_scan_detects_account_hyphenated():
 
 # ── 카드번호 (CARD) ───────────────────────────────────────────────────────────
 
+
 def test_scan_detects_card_4x4_hyphen():
     ok, reason = scan("카드번호 1234-5678-9012-3456")
     assert ok is False
@@ -113,6 +117,7 @@ def test_scan_detects_card_plain_16digit():
 
 
 # ── 전화번호 (PHONE) ──────────────────────────────────────────────────────────
+
 
 def test_scan_detects_phone_mobile_hyphen():
     ok, reason = scan("연락처: 010-1234-5678")
@@ -140,6 +145,7 @@ def test_scan_detects_phone_international():
 
 # ── 이메일 (EMAIL) ────────────────────────────────────────────────────────────
 
+
 def test_scan_detects_email_basic():
     ok, reason = scan("이메일: user@example.com")
     assert ok is False
@@ -159,6 +165,7 @@ def test_scan_detects_email_in_sentence():
 
 
 # ── 복합 (multiple PII types) ────────────────────────────────────────────────
+
 
 def test_scan_stops_at_first_match():
     """Returns on first detected type (does not require exhaustive scan)."""

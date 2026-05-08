@@ -1,6 +1,6 @@
 """Central GraphState for the LangGraph form-fill pipeline."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -26,7 +26,7 @@ class ItemPlan(BaseModel):
     source_evidence: list[str]  # material doc ids / spans
     confidence: float
     needs_question: bool
-    question: Optional[str] = None
+    question: str | None = None
 
 
 class DraftItem(BaseModel):
@@ -42,15 +42,15 @@ class PendingQuestion(BaseModel):
 
 
 class GraphState(BaseModel):
-    session_id: Optional[str] = None
-    intent: Optional[Intent] = None
-    user_message: Optional[str] = None
-    form_doc: Optional[FormDoc] = None
+    session_id: str | None = None
+    intent: Intent | None = None
+    user_message: str | None = None
+    form_doc: FormDoc | None = None
     materials: MaterialBundle = MaterialBundle(docs=[])
     plans: list[ItemPlan] = []
     drafts: list[DraftItem] = []
-    pending_question: Optional[PendingQuestion] = None
-    pending_answer: Optional[str] = None
+    pending_question: PendingQuestion | None = None
+    pending_answer: str | None = None
     history: list[dict[str, str]] = []  # last 10 turns
     errors: list[str] = []
 

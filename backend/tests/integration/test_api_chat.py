@@ -297,7 +297,10 @@ async def test_item_chat_returns_solar_reply():
             ) as response:
                 await _consume_sse(response)
 
-    with patch("backend.app.api.sessions.solar.complete", return_value="이 항목의 핵심을 말씀해 주시겠어요?"):
+    with patch(
+        "backend.app.api.sessions.solar.complete",
+        return_value="이 항목의 핵심을 말씀해 주시겠어요?",
+    ):
         async with _client() as c:
             r = await c.post(
                 f"/api/sessions/{sid}/item-chat",
@@ -329,7 +332,11 @@ async def test_item_chat_masks_pii_before_solar():
         async with _client() as c:
             r = await c.post(
                 f"/api/sessions/{sid}/item-chat",
-                json={"item_id": "s0:p0", "message": "전화번호는 010-1234-5678입니다", "history": []},
+                json={
+                    "item_id": "s0:p0",
+                    "message": "전화번호는 010-1234-5678입니다",
+                    "history": [],
+                },
             )
     assert r.status_code == 200
     payload = "".join(m.get("content", "") for m in captured[0])
@@ -350,6 +357,7 @@ async def test_item_chat_pii_item_returns_400():
 
     # Patch the saved graph_state's form_doc so item s0:p0 is PII.
     from backend.app.hwpx.models import FormDoc, Item
+
     sess = await store.get(sid)
     pii_form = FormDoc(
         sections=["Contents/section0.xml"],
@@ -400,8 +408,9 @@ async def test_item_chat_supports_slash_in_item_id():
                 await _consume_sse(response)
 
     # Patch saved state with an item_id containing '/'
-    from backend.app.hwpx.models import FormDoc, Item
     from backend.app.graph.state import DraftItem
+    from backend.app.hwpx.models import FormDoc, Item
+
     sess = await store.get(sid)
     real_id = "Contents/section0.xml:p2"
     new_form = FormDoc(
@@ -420,7 +429,10 @@ async def test_item_chat_supports_slash_in_item_id():
         placeholders=[],
     )
     new_state = sess.graph_state.model_copy(
-        update={"form_doc": new_form, "drafts": [DraftItem(item_id=real_id, text="초안", citations=[])]}
+        update={
+            "form_doc": new_form,
+            "drafts": [DraftItem(item_id=real_id, text="초안", citations=[])],
+        }
     )
     await store.save_state(sid, new_state)
 

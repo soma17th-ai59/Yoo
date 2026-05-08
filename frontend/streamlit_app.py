@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 import httpx
 import streamlit as st
 import streamlit.components.v1 as components
-
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -193,7 +192,6 @@ def _is_unfilled(text: str) -> bool:
 
 
 from frontend.extract_body import extract_body as _extract_body  # noqa: E402
-
 
 # --- sidebar ---------------------------------------------------------------
 
@@ -409,7 +407,9 @@ if st.session_state.drafts:
                 hist_key = f"chat_history_{item_id}"
                 history = st.session_state.get(hist_key, [])
                 with st.container(border=True):
-                    st.markdown(f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다.")
+                    st.markdown(
+                        f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다."
+                    )
                     for m in history:
                         with st.chat_message(m["role"]):
                             # Render as normal-body-sized plain text (no markdown
@@ -425,7 +425,9 @@ if st.session_state.drafts:
 
                     with st.form(f"chat_form_{item_id}", clear_on_submit=True):
                         typed = st.text_input(
-                            "메시지", key=f"chat_input_{item_id}", label_visibility="collapsed",
+                            "메시지",
+                            key=f"chat_input_{item_id}",
+                            label_visibility="collapsed",
                             placeholder="이 항목에 대한 정보를 입력하거나 질문하세요…",
                         )
                         send = st.form_submit_button("전송")
@@ -494,9 +496,7 @@ def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
 
     pii_items = [it for it in items if it.get("is_pii")]
     gap_items = [
-        it
-        for it in items
-        if not it.get("is_pii") and it.get("item_id") not in drafted_ids
+        it for it in items if not it.get("is_pii") and it.get("item_id") not in drafted_ids
     ]
     return pii_items, gap_items
 
@@ -507,7 +507,9 @@ if st.session_state.form_doc and (st.session_state.drafts or st.session_state.do
         with st.container(border=True):
             st.markdown("### ✍️ 직접 작성이 필요한 항목")
             if pii_items:
-                st.markdown("**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**")
+                st.markdown(
+                    "**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**"
+                )
                 for it in pii_items:
                     st.markdown(f"- {it.get('label', '?')}")
             if gap_items:
@@ -522,9 +524,7 @@ if st.session_state.form_doc and (st.session_state.drafts or st.session_state.do
 # --- download --------------------------------------------------------------
 
 if st.session_state.download_url:
-    unfilled_drafts = [
-        d for d in st.session_state.drafts if _is_unfilled(d.get("text", ""))
-    ]
+    unfilled_drafts = [d for d in st.session_state.drafts if _is_unfilled(d.get("text", ""))]
     if unfilled_drafts:
         names = "\n".join(f"  • {_item_label(d.get('item_id'))}" for d in unfilled_drafts)
         st.warning(

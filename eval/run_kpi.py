@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import statistics
 import sys
 import time
 from pathlib import Path
@@ -21,7 +20,6 @@ from typing import Any
 from backend.app.hwpx.parser import parse_hwpx
 from backend.app.pii import output_guard
 from backend.app.pii.form_detector import flag_pii_items
-
 
 ROOT = Path(__file__).parent
 FORMS_DIR = ROOT / "forms"
@@ -131,7 +129,9 @@ def compute_router_accuracy(predictions: list[str], testset: list[dict]) -> floa
 
 def run_router_live(testset: list[dict]) -> list[str]:
     """Call Router for each test command. Returns list of predicted intents."""
-    from backend.app.graph.nodes.router import _solar_complete  # imported here to avoid circular at import-time
+    from backend.app.graph.nodes.router import (
+        _solar_complete,  # imported here to avoid circular at import-time
+    )
     from backend.app.llm.prompts import build_router_messages
 
     preds: list[str] = []
@@ -170,7 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     k1_passed = k1_f1 >= K1_TARGET
     print(_row("K1 form-blank F1", f"{k1_f1:.3f}", f"≥ {K1_TARGET:.2f}", k1_passed))
     for fid, scores in k1["per_form"].items():
-        print(f"      └─ {fid}: P={scores['precision']:.2f} R={scores['recall']:.2f} F1={scores['f1']:.2f}")
+        print(
+            f"      └─ {fid}: P={scores['precision']:.2f} R={scores['recall']:.2f} F1={scores['f1']:.2f}"
+        )
 
     # K5 — always runs (over fixture materials)
     k5 = compute_k5(MATERIALS_DIR)

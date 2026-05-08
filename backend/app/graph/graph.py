@@ -15,21 +15,20 @@ Adaptive routing:
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Protocol
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
-from backend.app.graph.state import GraphState
-from backend.app.graph.nodes.router import route
 from backend.app.graph.nodes.form_parser import parse_form
+from backend.app.graph.nodes.generator import generate_drafts
 from backend.app.graph.nodes.material_ingestor import ingest_materials
 from backend.app.graph.nodes.planner import plan_items
-from backend.app.graph.nodes.generator import generate_drafts
-from backend.app.graph.nodes.question import ask_question, resume_with_answer
-from backend.app.graph.nodes.verifier import verify_drafts
+from backend.app.graph.nodes.question import ask_question
 from backend.app.graph.nodes.renderer import render_output
+from backend.app.graph.nodes.router import route
+from backend.app.graph.nodes.verifier import verify_drafts
+from backend.app.graph.state import GraphState
 from backend.app.llm import solar as _solar_mod
-
 
 # ---------------------------------------------------------------------------
 # SessionProvider Protocol

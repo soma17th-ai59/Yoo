@@ -5,7 +5,6 @@ Tests verify the harness logic — they do not measure KPIs against real targets
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from eval.run_kpi import (

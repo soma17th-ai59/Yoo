@@ -7,14 +7,11 @@ that the correct nodes ran for each intent.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-
-from backend.app.graph.graph import build_compiled_graph, SessionProvider
-from backend.app.graph.state import GraphState, MaterialBundle, ItemPlan, DraftItem
-from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
-
+from backend.app.graph.graph import build_compiled_graph
+from backend.app.graph.state import GraphState, ItemPlan, MaterialBundle
+from backend.app.hwpx.models import FormDoc, Item
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -233,8 +230,9 @@ def test_general_qa_has_no_renderer():
     final = GraphState.model_validate(result) if isinstance(result, dict) else result
 
     assert not renderer_called, "Renderer ran but should not for general_qa"
-    assert "rendered_bytes" not in result or not result.get("rendered_bytes"), \
+    assert "rendered_bytes" not in result or not result.get("rendered_bytes"), (
         "rendered_bytes should not be set for general_qa"
+    )
     # Check that a reply was produced (history should have assistant turn)
     assistant_turns = [t for t in final.history if t.get("role") == "assistant"]
     assert len(assistant_turns) > 0, "No assistant reply in history for general_qa"

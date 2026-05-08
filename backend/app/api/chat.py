@@ -14,7 +14,8 @@ The graph runs against the in-memory SessionStore as its SessionProvider.
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -114,9 +115,7 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
 
     sess = await store.get(session_id)
     download_url = (
-        f"/api/sessions/{session_id}/output.hwpx"
-        if sess and sess.rendered_bytes
-        else None
+        f"/api/sessions/{session_id}/output.hwpx" if sess and sess.rendered_bytes else None
     )
     yield {"event": "done", "data": json.dumps({"download_url": download_url})}
 
@@ -124,7 +123,5 @@ async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
     if (await store.get(req.session_id)) is None:
-        raise HTTPException(
-            status_code=404, detail=f"세션을 찾을 수 없습니다: {req.session_id}"
-        )
+        raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {req.session_id}")
     return EventSourceResponse(_stream_graph(req.session_id, req.message))

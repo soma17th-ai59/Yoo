@@ -108,10 +108,12 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
         )
 
     plan = next((p for p in state.plans if p.item_id == item_id), None)
-    materials_brief = "\n".join(
-        f"- {m['filename']}: {m.get('summary', '')[:300]}"
-        for m in state.materials.docs[:6]
-    ) or "(자료 없음)"
+    materials_brief = (
+        "\n".join(
+            f"- {m['filename']}: {m.get('summary', '')[:300]}" for m in state.materials.docs[:6]
+        )
+        or "(자료 없음)"
+    )
 
     context = (
         f"## 작성 대상 항목\n"
@@ -204,7 +206,11 @@ async def session_debug(session_id: str):
         "pending_question": state.pending_question.model_dump() if state.pending_question else None,
         "materials_count": len(state.materials.docs),
         "materials": [
-            {"doc_id": d.get("doc_id"), "filename": d.get("filename"), "summary": d.get("summary", "")[:160]}
+            {
+                "doc_id": d.get("doc_id"),
+                "filename": d.get("filename"),
+                "summary": d.get("summary", "")[:160],
+            }
             for d in state.materials.docs
         ],
     }

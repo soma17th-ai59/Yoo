@@ -40,11 +40,7 @@ def apply_drafts(src: bytes, drafts: list[DraftItem]) -> bytes:
         if name == "mimetype":
             continue
         raw = src_zip.read(name)
-        if (
-            name.startswith("Contents/section")
-            and name.endswith(".xml")
-            and name in draft_map
-        ):
+        if name.startswith("Contents/section") and name.endswith(".xml") and name in draft_map:
             raw = _patch_section(raw, draft_map[name])
         zinfo = src_zip.getinfo(name)
         zout.writestr(zinfo.filename, raw)
@@ -103,9 +99,7 @@ def _apply_paragraph_drafts(tree, paragraph_drafts: dict[int, DraftItem]) -> Non
         _write_text_into_paragraph(non_empty_paragraphs[idx], draft)
 
 
-def _apply_cell_drafts(
-    tree, cell_drafts: dict[tuple[int, int, int], DraftItem]
-) -> None:
+def _apply_cell_drafts(tree, cell_drafts: dict[tuple[int, int, int], DraftItem]) -> None:
     tables = list(tree.iter(f"{_HP}tbl"))
     for (tidx, r, c), draft in cell_drafts.items():
         if tidx >= len(tables):

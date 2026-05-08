@@ -11,7 +11,6 @@ from backend.app.api import chat as chat_api
 from backend.app.api import sessions as sessions_api
 from backend.app.api import upload as upload_api
 
-
 app = FastAPI(title="HwpAgent", version="0.1.0")
 
 app.include_router(sessions_api.router)

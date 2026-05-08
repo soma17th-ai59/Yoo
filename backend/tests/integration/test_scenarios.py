@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from contextlib import ExitStack
 from typing import Any
 from unittest.mock import patch
@@ -21,7 +20,6 @@ from backend.app.hwpx.models import FormDoc, Item
 from backend.app.main import app
 from backend.app.pii import output_guard
 from backend.app.session import store
-
 
 # ---------------------------------------------------------------------------
 # Fixtures and builders
@@ -94,7 +92,9 @@ def _planner_for_form(form: FormDoc, needs_question_ids: set[str] | None = None)
             "source_evidence": ["m1"],
             "confidence": 0.9,
             "needs_question": it.item_id in needs_question_ids,
-            "question": "본인의 강점을 한 줄로 알려주세요." if it.item_id in needs_question_ids else None,
+            "question": "본인의 강점을 한 줄로 알려주세요."
+            if it.item_id in needs_question_ids
+            else None,
         }
         for it in form.items
         if not it.is_pii  # PII items get pii_placeholder evidence handled by the renderer
@@ -328,6 +328,7 @@ async def test_scenario_c2_resume_after_pending_does_not_reask():
         # ask_question may surface one) so the resume logic has work to do.
         session = await store.get(sid)
         from backend.app.graph.state import PendingQuestion
+
         primed = session.graph_state.model_copy(
             update={"pending_question": PendingQuestion(item_id="s0:p4", question="강점?")}
         )
@@ -502,7 +503,7 @@ _RAW_JUMIN = "900101-1234567"
 async def test_scenario_e_pii_never_reaches_solar_or_drafts():
     form = _form_with_pii()
     # Material containing raw 주민번호 — must be masked before any LLM call.
-    materials = [("private_cv.txt", f"이력서. 주민번호 {_RAW_JUMIN}".encode("utf-8"))]
+    materials = [("private_cv.txt", f"이력서. 주민번호 {_RAW_JUMIN}".encode())]
     sid = await _create_session_with_form_and_materials(materials)
 
     captured_payloads: list[str] = []

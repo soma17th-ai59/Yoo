@@ -9,11 +9,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
-from backend.app.graph.state import GraphState, DraftItem, MaterialBundle
-from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
-
+from backend.app.graph.state import DraftItem, GraphState, MaterialBundle
+from backend.app.hwpx.models import FormDoc, Item
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,7 +28,9 @@ def _make_item(item_id: str, label: str = "항목") -> Item:
 
 
 def _make_form(*items: Item) -> FormDoc:
-    return FormDoc(sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[])
+    return FormDoc(
+        sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[]
+    )
 
 
 def _make_draft(item_id: str, text: str = "초안 내용입니다.", approved: bool = False) -> DraftItem:
@@ -66,6 +65,7 @@ class TestOkVerdict:
             return_value={"verdict": "ok", "reason": "내용이 적절합니다."},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert result["drafts"][0].approved is True
@@ -81,6 +81,7 @@ class TestOkVerdict:
             return_value={"verdict": "ok", "reason": "OK"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert result["drafts"][0].text == original_text
@@ -102,6 +103,7 @@ class TestRetryVerdict:
             return_value={"verdict": "retry", "reason": "수정 필요"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert result["drafts"][0].text.startswith("[검토 필요]")
@@ -116,6 +118,7 @@ class TestRetryVerdict:
             return_value={"verdict": "retry", "reason": "수정 필요"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert result["drafts"][0].approved is True
@@ -137,6 +140,7 @@ class TestSoftFailVerdict:
             return_value={"verdict": "soft_fail", "reason": "경고"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert "[확인 필요]" in result["drafts"][0].text
@@ -151,6 +155,7 @@ class TestSoftFailVerdict:
             return_value={"verdict": "soft_fail", "reason": "경고"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert result["drafts"][0].approved is True
@@ -172,6 +177,7 @@ class TestInvalidSolarResponse:
             side_effect=RuntimeError("Solar error"),
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert "[확인 필요]" in result["drafts"][0].text
@@ -187,6 +193,7 @@ class TestInvalidSolarResponse:
             return_value={"verdict": "unknown_verdict", "reason": "?"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert "[확인 필요]" in result["drafts"][0].text
@@ -203,6 +210,7 @@ class TestEmptyDrafts:
         state = _make_state(form, drafts=[])
 
         from backend.app.graph.nodes.verifier import verify_drafts
+
         result = verify_drafts(state)
 
         assert result["drafts"] == []
@@ -234,6 +242,7 @@ class TestMultipleDrafts:
             side_effect=verdicts,
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert len(result["drafts"]) == 3
@@ -256,6 +265,7 @@ class TestStateMutation:
             return_value={"verdict": "soft_fail", "reason": "경고"},
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             verify_drafts(state)
 
         # State's original draft is unchanged
@@ -284,6 +294,7 @@ class TestAllApproved:
             side_effect=verdicts,
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert all(d.approved for d in result["drafts"])
@@ -299,6 +310,7 @@ class TestAllApproved:
             side_effect=AssertionError("should not call Solar"),
         ):
             from backend.app.graph.nodes.verifier import verify_drafts
+
             result = verify_drafts(state)
 
         assert result["drafts"][0].approved is True

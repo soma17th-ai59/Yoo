@@ -20,10 +20,10 @@ OUT = Path(__file__).parent
 # ---------------------------------------------------------------------------
 
 _FONT_CANDIDATES = [
-    Path("C:/Windows/Fonts/malgun.ttf"),          # Windows: Malgun Gothic
-    Path("C:/Windows/Fonts/NanumGothic.ttf"),     # Windows: Nanum Gothic
+    Path("C:/Windows/Fonts/malgun.ttf"),  # Windows: Malgun Gothic
+    Path("C:/Windows/Fonts/NanumGothic.ttf"),  # Windows: Nanum Gothic
     Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),  # Ubuntu: Nanum
-    Path("/System/Library/Fonts/AppleGothic.ttf"),             # macOS
+    Path("/System/Library/Fonts/AppleGothic.ttf"),  # macOS
 ]
 
 
@@ -32,8 +32,7 @@ def _find_korean_font() -> Path:
         if p.exists():
             return p
     raise FileNotFoundError(
-        "No Korean TTF font found. Install one of: "
-        + ", ".join(str(p) for p in _FONT_CANDIDATES)
+        "No Korean TTF font found. Install one of: " + ", ".join(str(p) for p in _FONT_CANDIDATES)
     )
 
 

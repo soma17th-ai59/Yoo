@@ -3,11 +3,8 @@
 import asyncio
 import time
 
-import pytest
-
 from backend.app.graph.state import GraphState
-from backend.app.session import Session, SessionStore
-
+from backend.app.session import SessionStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -111,7 +108,7 @@ async def test_save_state_and_retrieve():
 async def test_put_rendered_bytes():
     store = _make_store()
     sid = await store.create()
-    rendered = b"\xFF\xFErendered"
+    rendered = b"\xff\xferendered"
     store.put_rendered_bytes(sid, rendered)
     session = await store.get(sid)
     assert session is not None

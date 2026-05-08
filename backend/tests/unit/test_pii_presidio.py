@@ -4,12 +4,11 @@ Pass 2 handles unstructured Korean PII: 이름, 주소, 소속, 학번.
 Pass-1 tokens (e.g., [JUMIN]) must pass through unchanged.
 """
 
-import pytest
-from backend.app.pii.presidio_masker import presidio_mask
 from backend.app.pii import mask_all
-
+from backend.app.pii.presidio_masker import presidio_mask
 
 # ── 이름 (NAME) ──────────────────────────────────────────────────────────────
+
 
 def test_name_kim_yeongu():
     result = presidio_mask("연구책임자: 김연구 교수입니다.")
@@ -57,6 +56,7 @@ def test_name_responsible_researcher():
 
 # ── 이름 거짓 양성 방지 (NAME false-positive prevention) ────────────────────
 
+
 def test_no_name_match_on_form_labels():
     # Common form labels must not trigger NAME masking.
     for label in ["주소:", "소속:", "이메일:", "전화번호:", "서울특별시"]:
@@ -85,6 +85,7 @@ def test_no_name_match_on_phone_label():
 
 
 # ── 주소 (ADDRESS) ───────────────────────────────────────────────────────────
+
 
 def test_address_seoul():
     result = presidio_mask("주소: 서울특별시 강남구 테헤란로 123")
@@ -118,6 +119,7 @@ def test_address_not_masked_without_admin_prefix():
 
 # ── 소속 (AFFILIATION) ───────────────────────────────────────────────────────
 
+
 def test_affiliation_seoul_univ():
     result = presidio_mask("소속: 서울대학교 공과대학")
     assert "[AFFILIATION]" in result
@@ -148,6 +150,7 @@ def test_affiliation_research_won():
 
 
 # ── 학번 (STUDENT_ID) ────────────────────────────────────────────────────────
+
 
 def test_student_id_8digit():
     result = presidio_mask("학번 20201234")
@@ -180,6 +183,7 @@ def test_student_id_not_masked_without_keyword():
 
 # ── 패스1 토큰 통과 (pass-1 tokens survive pass 2) ──────────────────────────
 
+
 def test_pass1_jumin_token_survives():
     result = presidio_mask("주민번호: [JUMIN]")
     assert "[JUMIN]" in result
@@ -201,6 +205,7 @@ def test_pass1_email_token_survives():
 
 
 # ── mask_all 합성 (combines pass 1 + pass 2) ────────────────────────────────
+
 
 def test_mask_all_name_and_phone():
     text = "연구책임자: 김연구 연구원의 전화번호는 010-1234-5678 입니다."

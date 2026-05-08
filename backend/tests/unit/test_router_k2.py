@@ -75,8 +75,7 @@ class TestRouterK2Accuracy:
 
         accuracy = correct / total
         assert accuracy >= 0.90, (
-            f"K2 accuracy {accuracy:.2%} is below the 0.90 target "
-            f"({correct}/{total} correct)"
+            f"K2 accuracy {accuracy:.2%} is below the 0.90 target ({correct}/{total} correct)"
         )
 
     def test_each_intent_category_has_at_least_5_commands(self):
@@ -86,6 +85,4 @@ class TestRouterK2Accuracy:
 
         counts = Counter(entry["intent"] for entry in testset)
         for intent, count in counts.items():
-            assert count >= 5, (
-                f"Intent '{intent}' has only {count} commands; expected ≥ 5"
-            )
+            assert count >= 5, f"Intent '{intent}' has only {count} commands; expected ≥ 5"

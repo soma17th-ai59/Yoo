@@ -69,7 +69,8 @@ def test_apply_drafts_writes_to_table_cell_not_label():
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
     target = next(
-        it for it in doc.items
+        it
+        for it in doc.items
         if it.kind == "table_cell" and it.fillable and "tbl0:r1c0" in it.item_id
     )
     out = apply_drafts(src, [DraftItem(item_id=target.item_id, text="2024년")])
@@ -94,18 +95,17 @@ def test_apply_drafts_paragraph_routing_unaffected_by_tables():
     out = apply_drafts(src, [DraftItem(item_id=target.item_id, text="새 본문")])
     new_doc = parse_hwpx(out)
     paragraph_labels = [it.label for it in new_doc.items if it.kind == "paragraph"]
-    assert any("새 본문" in l for l in paragraph_labels)
+    assert any("새 본문" in lbl for lbl in paragraph_labels)
     # Header cells unchanged
-    assert any(
-        it.label == "연도" for it in new_doc.items if it.kind == "table_cell"
-    )
+    assert any(it.label == "연도" for it in new_doc.items if it.kind == "table_cell")
 
 
 def test_apply_drafts_cell_pii_writes_placeholder():
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
     target = next(
-        it for it in doc.items
+        it
+        for it in doc.items
         if it.kind == "table_cell" and it.fillable and "tbl0:r1c1" in it.item_id
     )
     out = apply_drafts(
