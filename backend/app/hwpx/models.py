@@ -13,6 +13,7 @@ class Item(BaseModel):
     kind: ItemKind
     xml_xpath: str
     is_pii: bool = False
+    fillable: bool = True
 
 
 class Table(BaseModel):

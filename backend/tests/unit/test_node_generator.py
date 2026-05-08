@@ -354,6 +354,58 @@ class TestEmptyPlans:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# 9. Non-fillable (label) cells produce no draft (defense-in-depth)
+# ---------------------------------------------------------------------------
+
+
+def test_generator_skips_non_fillable_items(monkeypatch):
+    """Defensive: even if a plan exists for a non-fillable item, generator skips it."""
+    from backend.app.graph.nodes.generator import generate_drafts
+    from backend.app.graph.state import GraphState, ItemPlan
+    from backend.app.hwpx.models import FormDoc, Item
+
+    label_cell = Item(
+        item_id="s:tbl0:r0c0",
+        label="자기소개",
+        section="s",
+        kind="table_cell",
+        xml_xpath="/x",
+        fillable=False,
+    )
+    value_cell = Item(
+        item_id="s:tbl0:r0c1",
+        label="자기소개",
+        section="s",
+        kind="table_cell",
+        xml_xpath="/x",
+        fillable=True,
+    )
+    state = GraphState(
+        form_doc=FormDoc(
+            sections=["s"], items=[label_cell, value_cell], tables=[], placeholders=[]
+        ),
+        plans=[
+            ItemPlan(
+                item_id="s:tbl0:r0c0", source_evidence=[], confidence=0.5, needs_question=False
+            ),
+            ItemPlan(
+                item_id="s:tbl0:r0c1", source_evidence=[], confidence=0.5, needs_question=False
+            ),
+        ],
+    )
+
+    monkeypatch.setattr(
+        "backend.app.graph.nodes.generator._solar_complete",
+        lambda messages: {"text": "본문", "citations": []},
+    )
+
+    result = generate_drafts(state)
+    draft_ids = {d.item_id for d in result["drafts"]}
+    assert "s:tbl0:r0c0" not in draft_ids
+    assert "s:tbl0:r0c1" in draft_ids
+
+
 class TestStateMutation:
     def test_state_plans_not_mutated(self):
         form = _make_form(_make_item("item1"))

@@ -516,3 +516,47 @@ class TestStateMutation:
             plan_items(state)
 
         assert state.plans == original_plans
+
+
+# ---------------------------------------------------------------------------
+# 9. Non-fillable (label) cells produce no plan
+# ---------------------------------------------------------------------------
+
+
+def test_planner_skips_non_fillable_label_cells(monkeypatch):
+    """Items with fillable=False (table label cells) get no plan at all."""
+    from backend.app.graph.nodes.planner import plan_items
+    from backend.app.graph.state import GraphState
+    from backend.app.hwpx.models import FormDoc, Item
+
+    monkeypatch.setattr(
+        "backend.app.graph.nodes.planner._solar_complete",
+        lambda messages: [],
+    )
+
+    label_cell = Item(
+        item_id="s:tbl0:r0c0",
+        label="자기소개",
+        section="s",
+        kind="table_cell",
+        xml_xpath="/x",
+        fillable=False,
+    )
+    value_cell = Item(
+        item_id="s:tbl0:r0c1",
+        label="자기소개",
+        section="s",
+        kind="table_cell",
+        xml_xpath="/x",
+        fillable=True,
+    )
+    state = GraphState(
+        form_doc=FormDoc(
+            sections=["s"], items=[label_cell, value_cell], tables=[], placeholders=[]
+        ),
+    )
+
+    result = plan_items(state)
+    plan_ids = {p.item_id for p in result["plans"]}
+    assert "s:tbl0:r0c0" not in plan_ids, "label cell should not get a plan"
+    assert "s:tbl0:r0c1" in plan_ids, "value cell should get a plan"

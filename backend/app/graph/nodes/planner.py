@@ -46,8 +46,8 @@ def plan_items(state: GraphState) -> dict:
         if item.is_pii
     }
 
-    # Non-PII items — ask Solar
-    non_pii_items = [item for item in items if not item.is_pii]
+    # Non-PII, fillable items — ask Solar
+    non_pii_items = [item for item in items if not item.is_pii and item.fillable]
     solar_plans: dict[str, ItemPlan] = {}
 
     if non_pii_items:
@@ -100,8 +100,10 @@ def plan_items(state: GraphState) -> dict:
         except Exception as exc:
             return {"plans": [], "errors": [f"Planner Solar 오류: {exc}"]}
 
-    # Merge: PII plans + Solar plans + defaults for any missing non-PII items
+    # Merge: PII plans + Solar plans + defaults for any missing fillable non-PII items
     for item in items:
+        if not item.fillable:
+            continue
         if item.is_pii:
             plans.append(pii_plans[item.item_id])
         elif item.item_id in solar_plans:
