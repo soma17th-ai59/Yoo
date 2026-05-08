@@ -196,9 +196,9 @@ def test_no_placeholder_when_no_pii_items():
 
 def test_original_state_not_mutated():
     """parse_form must not mutate the incoming GraphState."""
-    state = GraphState(user_message="hello")
+    state = GraphState(session_id="test-session")
     parse_form(state, FIXTURE.read_bytes())
-    assert state.user_message == "hello"
+    assert state.session_id == "test-session"
     assert state.form_doc is None
 
 

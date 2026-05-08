@@ -95,12 +95,12 @@ async def test_put_material_file_appends():
 async def test_save_state_and_retrieve():
     store = _make_store()
     sid = await store.create()
-    state = GraphState(session_id=sid, user_message="테스트")
+    state = GraphState(session_id=sid, errors=["테스트 에러"])
     await store.save_state(sid, state)
     session = await store.get(sid)
     assert session is not None
     assert session.graph_state is not None
-    assert session.graph_state.user_message == "테스트"
+    assert session.graph_state.errors == ["테스트 에러"]
 
 
 # ---------------------------------------------------------------------------

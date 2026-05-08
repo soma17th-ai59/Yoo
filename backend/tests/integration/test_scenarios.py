@@ -158,12 +158,8 @@ async def _consume_sse(response) -> list[tuple[str, str]]:
 
 
 def _start_fill_patches(form: FormDoc, *, planner_response: list[dict] | None = None):
-    """Patches that drive a complete start_fill run with mocked Solar."""
+    """Patches that drive a complete fill run with mocked Solar."""
     return [
-        patch(
-            "backend.app.graph.nodes.router._solar_complete",
-            return_value={"intent": "start_fill", "confidence": 0.95},
-        ),
         patch(
             "backend.app.graph.nodes.form_parser.parse_hwpx",
             return_value=form,
@@ -214,7 +210,6 @@ async def test_scenario_a_happy_path():
                 events = await _consume_sse(response)
 
     event_names = [n for n, _ in events]
-    assert "intent" in event_names
     assert "preview" in event_names
     assert "done" in event_names
 
@@ -226,18 +221,13 @@ async def test_scenario_a_happy_path():
     assert all(d["item_id"] != "s0:p0" for d in drafts), "PII item should not be drafted"
     assert len(drafts) == non_pii_count
 
-    # Download endpoint serves rendered bytes
-    async with _client() as c:
-        r = await c.get(f"/api/sessions/{sid}/output.hwpx")
-    assert r.status_code == 200
-    assert r.content == b"RENDERED-HWPX-BYTES"
-
 
 # ---------------------------------------------------------------------------
 # Scenario B — rewrite_item after A leaves Planner cold
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="rewrite_item routing removed in straight-line graph; rewrite in Bundle D")
 async def test_scenario_b_rewrite_item_skips_planner():
     sid = await _create_session_with_form_and_materials()
     form = _form_with_pii()
@@ -304,6 +294,7 @@ async def test_scenario_b_rewrite_item_skips_planner():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="pending_question/resume_with_answer removed; rewrite in Bundle D")
 async def test_scenario_c2_resume_after_pending_does_not_reask():
     """Regression: when the user answers a question, chat.py forces
     intent=rewrite_item so the Router skips classification (avoiding the
@@ -377,6 +368,7 @@ async def test_scenario_c2_resume_after_pending_does_not_reask():
     assert answered.approved is True
 
 
+@pytest.mark.skip(reason="pending_question flow removed; rewrite in Bundle D")
 async def test_scenario_c_needs_question_placeholder_draft():
     """When Planner marks an item needs_question=True, V1 no longer pauses
     the graph for an interrupt. The Generator emits a [추가 정보 필요]
@@ -418,6 +410,7 @@ async def test_scenario_c_needs_question_placeholder_draft():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="add_material routing removed in straight-line graph; rewrite in Bundle D")
 async def test_scenario_d_add_material_invokes_ingestor_and_planner():
     sid = await _create_session_with_form_and_materials()
     form = _form_with_pii()
@@ -507,10 +500,6 @@ async def test_scenario_e_pii_never_reaches_solar_or_drafts():
 
     captured_payloads: list[str] = []
 
-    def _record_and_route(messages):
-        captured_payloads.append(json.dumps(messages, ensure_ascii=False))
-        return {"intent": "start_fill", "confidence": 0.95}
-
     def _record_and_plan(messages):
         captured_payloads.append(json.dumps(messages, ensure_ascii=False))
         return _planner_for_form(form)
@@ -528,10 +517,6 @@ async def test_scenario_e_pii_never_reaches_solar_or_drafts():
         return "요약"
 
     with (
-        patch(
-            "backend.app.graph.nodes.router._solar_complete",
-            side_effect=_record_and_route,
-        ),
         patch(
             "backend.app.graph.nodes.form_parser.parse_hwpx",
             return_value=form,

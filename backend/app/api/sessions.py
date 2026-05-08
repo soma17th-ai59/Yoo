@@ -191,7 +191,7 @@ async def session_debug(session_id: str):
         return {"saved_state": False}
     return {
         "saved_state": True,
-        "intent": state.intent,
+
         "errors": state.errors,
         "form_doc": {
             "items": [
@@ -201,7 +201,7 @@ async def session_debug(session_id: str):
         },
         "plans": [p.model_dump() for p in state.plans],
         "drafts": [d.model_dump() for d in state.drafts],
-        "pending_question": state.pending_question.model_dump() if state.pending_question else None,
+
         "materials_count": len(state.materials.docs),
         "materials": [
             {"doc_id": d.get("doc_id"), "filename": d.get("filename"), "summary": d.get("summary", "")[:160]}
