@@ -225,6 +225,13 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
             detail="PII 항목은 [본인 직접 입력]으로 비워두며 대화 작성을 지원하지 않습니다.",
         )
 
+    target = next((d for d in state.drafts if d.item_id == item_id), None)
+    if target is not None and target.locked:
+        raise HTTPException(
+            status_code=400,
+            detail="잠긴 항목과는 대화할 수 없습니다. 먼저 🔓 해제하세요.",
+        )
+
     plan = next((p for p in state.plans if p.item_id == item_id), None)
     materials_brief = "\n".join(
         f"- {m['filename']}: {m.get('summary', '')[:300]}"
