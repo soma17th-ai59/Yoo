@@ -130,19 +130,11 @@ def compute_router_accuracy(predictions: list[str], testset: list[dict]) -> floa
 
 
 def run_router_live(testset: list[dict]) -> list[str]:
-    """Call Router for each test command. Returns list of predicted intents."""
-    from backend.app.graph.nodes.router import _solar_complete  # imported here to avoid circular at import-time
-    from backend.app.llm.prompts import build_router_messages
+    """K2 measurement is no longer meaningful — Router was removed.
 
-    preds: list[str] = []
-    for entry in testset:
-        messages = build_router_messages([], entry["command"])
-        try:
-            resp = _solar_complete(messages)
-            preds.append(str(resp.get("intent", "")) if isinstance(resp, dict) else "")
-        except Exception:
-            preds.append("")
-    return preds
+    See docs/superpowers/specs/2026-05-08-per-item-actions-design.md Open Issue #1.
+    """
+    raise NotImplementedError("K2 (Router accuracy) is no longer measured — Router was removed.")
 
 
 # ---------------------------------------------------------------------------
@@ -179,15 +171,13 @@ def main(argv: list[str] | None = None) -> int:
     for leak in k5["leaks"]:
         print(f"      └─ {leak['path']}: {leak['reason']}")
 
-    # K2-K4, K6 — live runs (need API)
+    # K2 (Router accuracy) is no longer measured — Router was removed in
+    # the per-item-actions refactor. See design doc Open Issue #1.
+    print(_row("K2 router accuracy", "n/a (Router 제거)", f"≥ {K2_TARGET:.2f}", None))
+
+    # K3, K4, K6 — live runs (need API)
     api_key = os.getenv("SOLAR_API_KEY")
     if args.live and api_key:
-        testset = json.loads(TESTSET_PATH.read_text(encoding="utf-8"))
-        t0 = time.perf_counter()
-        preds = run_router_live(testset)
-        k2 = compute_router_accuracy(preds, testset)
-        k2_passed = k2 >= K2_TARGET
-        print(_row("K2 router accuracy", f"{k2:.3f}", f"≥ {K2_TARGET:.2f}", k2_passed))
         # K3, K4, K6 require full graph runs which the harness would orchestrate.
         # Stub: not implemented in the V1 harness; leave SKIP for now.
         print(_row("K3 auto-fill rate", "—", f"≥ {K3_TARGET:.2f}", None))
@@ -195,7 +185,6 @@ def main(argv: list[str] | None = None) -> int:
         print(_row("K6 first-preview latency p50", "—", f"≤ {K6_TARGET_S:.0f}s", None))
     else:
         for label, target in [
-            ("K2 router accuracy", f"≥ {K2_TARGET:.2f}"),
             ("K3 auto-fill rate", f"≥ {K3_TARGET:.2f}"),
             ("K4 verifier first-pass", f"≥ {K4_TARGET:.2f}"),
             ("K6 first-preview latency", f"≤ {K6_TARGET_S:.0f}s"),
