@@ -12,27 +12,6 @@ from backend.app.hwpx.models import FormDoc
 # System prompts
 # ---------------------------------------------------------------------------
 
-ROUTER_SYS: str = """\
-당신은 사용자의 의도를 분류하는 라우터입니다.
-사용자의 메시지를 읽고, 아래 7가지 의도 중 하나로 정확히 분류하세요.
-
-의도 목록:
-- upload_form: 사용자가 .hwpx 형식의 공문서 양식을 업로드하였거나 업로드 의사를 밝힌 경우
-- upload_material: 사용자가 이력서, 연구계획서, 논문 등 참고자료를 업로드하였거나 업로드 의사를 밝힌 경우
-- start_fill: 사용자가 양식 자동 채우기를 시작하길 원하는 경우
-- rewrite_item: 사용자가 특정 항목의 내용을 다시 작성하거나 수정하길 원하는 경우
-- change_tone: 사용자가 특정 항목의 어조(격식체, 논문체 등)를 변경하길 원하는 경우
-- add_material: 사용자가 추가 참고자료를 제공하거나 추가하길 원하는 경우
-- general_qa: 양식 작성과 무관한 일반 질문인 경우
-
-응답 규칙:
-1. 반드시 JSON 형식으로만 응답하세요.
-2. 기본 형식: {"intent": "<의도>", "confidence": <0.0–1.0>}
-3. confidence가 0.7 미만이면 disambiguation 필드를 추가하고, 사용자에게 의도를 확인하는 질문을 한국어로 작성하세요.
-   예: {"intent": "start_fill", "confidence": 0.55, "disambiguation": "양식 자동 채우기를 시작하시겠습니까?"}
-4. intent 값은 위 7가지 중 하나여야 하며, 추가 설명 없이 JSON만 반환하세요.
-"""
-
 PLANNER_SYS: str = """\
 당신은 연구비 신청 양식의 각 항목을 분석하고 작성 계획을 수립하는 플래너입니다.
 사용자가 제공한 양식 항목 목록과 참고자료 목록을 바탕으로, 각 항목에 대한 작성 계획을 JSON 배열로 반환하세요.
@@ -103,21 +82,6 @@ VERIFIER_SYS: str = """\
 # ---------------------------------------------------------------------------
 # Message builders
 # ---------------------------------------------------------------------------
-
-_MAX_HISTORY_TURNS = 10  # individual messages (matches GraphState "last 10 turns")
-
-
-def build_router_messages(history: list[dict], user_msg: str) -> list[dict]:
-    """Build message list for the Router node.
-
-    Includes up to the last _MAX_HISTORY_TURNS messages from history (interleaved
-    user/assistant turns), sandwiched between the system prompt and the final user message.
-    """
-    messages: list[dict] = [{"role": "system", "content": ROUTER_SYS}]
-    recent = history[-_MAX_HISTORY_TURNS:] if history else []
-    messages.extend({"role": m["role"], "content": m["content"]} for m in recent)
-    messages.append({"role": "user", "content": user_msg})
-    return messages
 
 
 def build_planner_messages(form_doc: FormDoc, materials: list[dict]) -> list[dict]:
