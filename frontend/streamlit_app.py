@@ -75,6 +75,7 @@ _DEFAULTS = {
     "pending_question": None,
     "uploaded_form": None,
     "uploaded_materials": [],
+    "fill_requested": False,
 }
 for key, default in _DEFAULTS.items():
     if key not in st.session_state:
@@ -85,7 +86,7 @@ for key, default in _DEFAULTS.items():
 
 
 def _create_session() -> str:
-    r = httpx.post(f"{BACKEND_URL}/api/sessions", timeout=10.0)
+    r = httpx.post(f"{_current_backend()}/api/sessions", timeout=10.0)
     r.raise_for_status()
     return r.json()["session_id"]
 
@@ -93,12 +94,43 @@ def _create_session() -> str:
 def _upload(kind: str, name: str, data: bytes) -> None:
     sid = st.session_state.session_id
     r = httpx.post(
-        f"{BACKEND_URL}/api/upload",
+        f"{_current_backend()}/api/upload",
         data={"session_id": sid, "kind": kind},
         files={"file": (name, data, "application/octet-stream")},
         timeout=30.0,
     )
     r.raise_for_status()
+
+
+def _current_backend() -> str:
+    return BACKEND_URL
+
+
+def _stream_fill() -> Iterator[tuple[str, str]]:
+    sid = st.session_state.session_id
+    timeout = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
+    with httpx.stream(
+        "POST",
+        f"{_current_backend()}/api/sessions/{sid}/fill",
+        timeout=timeout,
+    ) as r:
+        r.raise_for_status()
+        event = "message"
+        data: list[str] = []
+        for raw in r.iter_lines():
+            line = raw.rstrip("\r")
+            if line == "":
+                if data:
+                    yield event, "\n".join(data)
+                event = "message"
+                data = []
+                continue
+            if line.startswith("event:"):
+                event = line.split(":", 1)[1].strip()
+            elif line.startswith("data:"):
+                data.append(line.split(":", 1)[1].strip())
+        if data:
+            yield event, "\n".join(data)
 
 
 def _stream_chat(message: str) -> Iterator[tuple[str, str]]:
@@ -240,6 +272,20 @@ with st.sidebar:
         if st.session_state.uploaded_materials:
             st.caption("업로드된 자료: " + ", ".join(st.session_state.uploaded_materials))
 
+    st.divider()
+    st.subheader("자동 채우기")
+    can_fill = bool(st.session_state.uploaded_form) and bool(st.session_state.uploaded_materials)
+    if st.button(
+        "▶ 양식 자동 채우기 시작",
+        use_container_width=True,
+        disabled=not can_fill,
+        type="primary" if can_fill else "secondary",
+    ):
+        st.session_state.fill_requested = True
+        st.rerun()
+    if not can_fill:
+        st.caption("양식과 자료를 모두 업로드하면 활성화됩니다.")
+
 
 # --- form-structure visualization ------------------------------------------
 
@@ -272,6 +318,31 @@ if st.session_state.form_doc:
             st.markdown(
                 f"**표 `{tbl.get('table_id')}`**  &nbsp;_{tbl.get('row_count', 0)}행_  &nbsp; 헤더: {headers}"
             )
+
+
+# --- fill request handler --------------------------------------------------
+
+if st.session_state.fill_requested:
+    st.session_state.fill_requested = False
+    status = st.empty()
+    try:
+        for event, raw in _stream_fill():
+            payload = json.loads(raw) if raw else None
+            if event == "node_started":
+                status.write(f"… {payload['node']}")
+            elif event == "form_parsed":
+                st.session_state.form_doc = payload
+            elif event == "preview":
+                st.session_state.drafts = payload or []
+            elif event == "done":
+                count = (payload or {}).get("draft_count", 0)
+                status.success(f"초안 {count}개 생성")
+            elif event == "error":
+                err = (payload or {}).get("error", "unknown")
+                st.error(f"채우기 오류: {err}")
+    except Exception as exc:
+        st.error(f"통신 오류: {exc}")
+    st.rerun()
 
 
 # --- chat thread -----------------------------------------------------------
