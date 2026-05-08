@@ -11,7 +11,7 @@ FIXTURE = Path("backend/tests/fixtures/forms/sample_form.hwpx")
 def test_apply_drafts_inserts_text():
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
-    target = doc.items[0]
+    target = next(it for it in doc.items if it.kind == "paragraph")
     out = apply_drafts(src, [DraftItem(item_id=target.item_id, text="새 본문 내용")])
     new_doc = parse_hwpx(out)
     assert any("새 본문 내용" in i.label for i in new_doc.items)
@@ -20,7 +20,7 @@ def test_apply_drafts_inserts_text():
 def test_apply_drafts_pii_uses_placeholder():
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
-    target = doc.items[0]
+    target = next(it for it in doc.items if it.kind == "paragraph")
     out = apply_drafts(
         src,
         [DraftItem(item_id=target.item_id, text="민감정보", is_pii=True)],
@@ -34,7 +34,8 @@ def test_apply_drafts_pii_uses_placeholder():
 def test_apply_drafts_preserves_non_xml_members():
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
-    out = apply_drafts(src, [DraftItem(item_id=doc.items[0].item_id, text="변경")])
+    para = next(it for it in doc.items if it.kind == "paragraph")
+    out = apply_drafts(src, [DraftItem(item_id=para.item_id, text="변경")])
 
     with zipfile.ZipFile(io.BytesIO(src)) as zin, zipfile.ZipFile(io.BytesIO(out)) as zout:
         src_names = set(zin.namelist())
@@ -47,9 +48,7 @@ def test_apply_drafts_preserves_non_xml_members():
         assert out_infos[0].compress_type == zipfile.ZIP_STORED
 
         # non-section files are byte-identical
-        non_section = [
-            n for n in src_names if not n.startswith("Contents/section")
-        ]
+        non_section = [n for n in src_names if not n.startswith("Contents/section")]
         for name in non_section:
             assert zin.read(name) == zout.read(name), f"Mismatch in {name}"
 
