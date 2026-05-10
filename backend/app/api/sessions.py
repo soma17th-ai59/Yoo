@@ -273,15 +273,22 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
 
 
 @router.get("/api/sessions/{session_id}/output.hwpx")
-async def download_output(session_id: str):
-    """Lazy render — build .hwpx from currently locked drafts at request time."""
+async def download_output(session_id: str, include_unlocked: bool = False):
+    """Lazy render — build .hwpx at request time.
+
+    Default: only locked drafts (user-approved) land in the output.
+    `?include_unlocked=true`: every generated draft is also written, for the
+    "비어 있어도 그대로 다운로드" path.
+    """
     session = await store.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
     if session.form_bytes is None or session.graph_state is None:
         raise HTTPException(status_code=404, detail="양식 또는 graph_state가 없습니다.")
 
-    result = render_output(session.graph_state, session.form_bytes)
+    result = render_output(
+        session.graph_state, session.form_bytes, include_unlocked=include_unlocked
+    )
     rendered = result.get("rendered_bytes", b"")
     if not rendered:
         raise HTTPException(status_code=500, detail="렌더 실패")

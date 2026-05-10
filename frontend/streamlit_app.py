@@ -211,10 +211,15 @@ def _save_draft_edit(item_id: str, text: str) -> bool:
     return True
 
 
-def _fetch_output_bytes() -> bytes | None:
+def _fetch_output_bytes(*, include_unlocked: bool = False) -> bytes | None:
     sid = st.session_state.session_id
+    params = {"include_unlocked": "true"} if include_unlocked else None
     try:
-        r = httpx.get(f"{_current_backend()}/api/sessions/{sid}/output.hwpx", timeout=60.0)
+        r = httpx.get(
+            f"{_current_backend()}/api/sessions/{sid}/output.hwpx",
+            params=params,
+            timeout=60.0,
+        )
         r.raise_for_status()
         return r.content
     except Exception as exc:
@@ -323,6 +328,24 @@ with st.sidebar:
                 file_name="output.hwpx",
                 mime="application/vnd.hancom.hwpx",
                 key="download_save_btn",
+                use_container_width=True,
+            )
+
+    if st.button(
+        "⬇ 미적용 초안 포함 다운로드",
+        use_container_width=True,
+        disabled=not st.session_state.form_doc,
+        key="download_force_btn",
+        help="적용(✓) 안 한 항목도 생성된 초안 텍스트로 채워서 .hwpx를 받습니다. PII 항목은 항상 [본인 직접 입력]으로 표시됩니다.",
+    ):
+        data = _fetch_output_bytes(include_unlocked=True)
+        if data:
+            st.download_button(
+                "📁 파일 저장 (미적용 초안 포함)",
+                data=data,
+                file_name="output.hwpx",
+                mime="application/vnd.hancom.hwpx",
+                key="download_force_save_btn",
                 use_container_width=True,
             )
 

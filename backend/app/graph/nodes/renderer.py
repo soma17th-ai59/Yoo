@@ -16,8 +16,15 @@ from backend.app.hwpx.renderer import apply_drafts
 _PII_DISPLAY_TEXT = "[본인 직접 입력]"
 
 
-def render_output(state: GraphState, form_bytes: bytes) -> dict:
+def render_output(
+    state: GraphState, form_bytes: bytes, *, include_unlocked: bool = False
+) -> dict:
     """Build the final HWPX bytes and a markdown preview.
+
+    By default only locked drafts land in the output (lock = user approval).
+    When `include_unlocked=True`, every generated draft is written too — used
+    for the "⬇ 미적용 초안 포함 다운로드" path so the user can grab a partially
+    auto-filled form without applying each card first.
 
     Returns {"rendered_bytes": bytes, "preview_md": str}.
     """
@@ -39,9 +46,12 @@ def render_output(state: GraphState, form_bytes: bytes) -> dict:
     for placeholder in state.form_doc.placeholders:
         if placeholder.item_id in pii_item_ids:
             continue  # already handled above
-        # Non-PII placeholders: look for a matching locked draft
         draft = next(
-            (d for d in state.drafts if d.item_id == placeholder.item_id and d.locked),
+            (
+                d
+                for d in state.drafts
+                if d.item_id == placeholder.item_id and (d.locked or include_unlocked)
+            ),
             None,
         )
         if draft is not None:
@@ -49,14 +59,14 @@ def render_output(state: GraphState, form_bytes: bytes) -> dict:
                 RendererDraftItem(item_id=placeholder.item_id, text=draft.text, is_pii=False)
             )
 
-    # Non-PII locked drafts (items not PII and not already handled via placeholders)
+    # Non-PII drafts (items not PII and not already handled via placeholders)
     handled_ids = {rd.item_id for rd in renderer_drafts}
     for draft in state.drafts:
         if draft.item_id in handled_ids:
             continue
         if draft.item_id in pii_item_ids:
             continue
-        if draft.locked:
+        if draft.locked or include_unlocked:
             renderer_drafts.append(
                 RendererDraftItem(item_id=draft.item_id, text=draft.text, is_pii=False)
             )
