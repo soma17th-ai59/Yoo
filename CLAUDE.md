@@ -23,14 +23,15 @@ The killer feature is **양식 자동 채우기** (form auto-fill) — *not* gen
 ## LangGraph nodes (each has a single responsibility)
 
 ```
-Router → FormParser → MaterialIngestor → Planner → (Generator | Question) → Verifier → Renderer
+form_parser → material_ingestor → planner → generator → verifier → END
 ```
 
-Adaptive routing for follow-ups:
-- `rewrite_item` / `change_tone` → skip Planner; go straight to Generator → Verifier → Renderer
-- `add_material` → MaterialIngestor → Planner (re-plan affected items only)
-- `start_fill` → full graph
-- `general_qa` → terminate after a chat-only response (no Renderer)
+Straight-line pipeline. Runs **only** when `POST /api/sessions/{sid}/fill` is called (SSE stream).
+
+- **Router/Question nodes are gone.** Adaptive intent routing was refactored away. Per-item actions (적용/수정/대화/다시) now live as `/api/sessions/{sid}/items/*` endpoints that bypass the graph entirely.
+- **Renderer is not a graph node.** `graph/nodes/renderer.py::render_output` is a plain function called lazily by `GET /output.hwpx`. Default writes only locked drafts; `?include_unlocked=true` writes every generated draft.
+- **Error cutoff.** Every edge is conditional on `state.errors`; any node appending an error short-circuits the rest of the pipeline to `END`.
+- **Module purity preserved.** Only `graph.py` imports LangGraph; nodes are `(state) -> dict` plain functions.
 
 See `backend/app/graph/graph.py` for the canonical wiring.
 
