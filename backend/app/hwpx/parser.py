@@ -143,6 +143,13 @@ def parse_hwpx(data: bytes) -> FormDoc:
                 for p in tree.iter(f"{_HP}p"):
                     if _is_inside_table(p):
                         continue
+                    # HWPX wraps tables inside <hp:p>. Such a wrapper paragraph
+                    # would itertext() out every cell's text, mislabel the
+                    # paragraph, and — worse — let the renderer overwrite all
+                    # nested table cells when it writes a draft here. The cells
+                    # are enumerated separately via _emit_table_items, so skip.
+                    if p.find(f".//{_HP}tbl") is not None:
+                        continue
                     text = "".join(p.itertext()).strip()
                     if not text:
                         continue
