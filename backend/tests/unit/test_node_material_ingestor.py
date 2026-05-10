@@ -7,7 +7,7 @@ Key invariant (CLAUDE.md §Hard rules rule 1):
 
 from __future__ import annotations
 
-from unittest.mock import patch, call
+from unittest.mock import patch
 
 from backend.app.graph.state import GraphState, MaterialBundle
 
@@ -29,13 +29,16 @@ def _state_with_materials(docs: list[dict] | None = None) -> GraphState:
     return GraphState(materials=bundle)
 
 
-def _make_file_tuple(filename: str = _SAMPLE_FILENAME, content: bytes = _SAMPLE_BYTES) -> tuple[str, bytes]:
+def _make_file_tuple(
+    filename: str = _SAMPLE_FILENAME, content: bytes = _SAMPLE_BYTES
+) -> tuple[str, bytes]:
     return (filename, content)
 
 
 # ---------------------------------------------------------------------------
 # Step 1: Pipeline order — mask_all called BEFORE summarize (spy test)
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineOrder:
     def test_mask_all_called_before_summarize(self):
@@ -55,11 +58,16 @@ class TestPipelineOrder:
 
         state = _state_with_materials()
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=mock_mask_all),
-            patch("backend.app.graph.nodes.material_ingestor.summarize", side_effect=mock_summarize),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.summarize", side_effect=mock_summarize
+            ),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             ingest_materials(state, [_make_file_tuple()])
 
         assert call_order == ["mask_all", "summarize"], (
@@ -85,11 +93,16 @@ class TestPipelineOrder:
         files = [_make_file_tuple("a.txt"), _make_file_tuple("b.txt")]
 
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=mock_mask_all),
-            patch("backend.app.graph.nodes.material_ingestor.summarize", side_effect=mock_summarize),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.summarize", side_effect=mock_summarize
+            ),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             ingest_materials(state, files)
 
         assert call_order == ["mask_all", "summarize", "mask_all", "summarize"], (
@@ -100,6 +113,7 @@ class TestPipelineOrder:
 # ---------------------------------------------------------------------------
 # Step 3: PII invariant — Solar receives only masked text (no raw JUMIN)
 # ---------------------------------------------------------------------------
+
 
 class TestPiiInvariant:
     def test_solar_never_receives_raw_jumin(self):
@@ -119,11 +133,16 @@ class TestPiiInvariant:
 
         state = _state_with_materials()
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=mock_mask_all),
-            patch("backend.app.materials.summarize._solar_complete", side_effect=mock_solar_complete),
+            patch(
+                "backend.app.materials.summarize._solar_complete", side_effect=mock_solar_complete
+            ),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             ingest_materials(state, [_make_file_tuple()])
 
         all_text = " ".join(solar_received_texts)
@@ -148,20 +167,24 @@ class TestPiiInvariant:
 
         state = _state_with_materials()
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=mock_mask_all),
-            patch("backend.app.materials.summarize._solar_complete", side_effect=mock_solar_complete),
+            patch(
+                "backend.app.materials.summarize._solar_complete", side_effect=mock_solar_complete
+            ),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             ingest_materials(state, [_make_file_tuple()])
 
         all_text = " ".join(solar_received_texts)
-        assert _JUMIN_MASKED in all_text, (
-            f"Expected [JUMIN] token in Solar input, but not found"
-        )
+        assert _JUMIN_MASKED in all_text, "Expected [JUMIN] token in Solar input, but not found"
 
     def test_masked_text_stored_in_bundle_not_raw(self):
         """The MaterialBundle stores masked text, not the raw PII text."""
+
         def mock_extract(path):
             return _SAMPLE_TEXT
 
@@ -170,11 +193,16 @@ class TestPiiInvariant:
 
         state = _state_with_materials()
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=mock_mask_all),
-            patch("backend.app.graph.nodes.material_ingestor.summarize", return_value=_SAMPLE_SUMMARY),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.summarize", return_value=_SAMPLE_SUMMARY
+            ),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
 
         bundle: MaterialBundle = result["materials"]
@@ -186,6 +214,7 @@ class TestPiiInvariant:
 # ---------------------------------------------------------------------------
 # Existing materials preserved
 # ---------------------------------------------------------------------------
+
 
 class TestMaterialsPreservation:
     def test_existing_docs_preserved(self):
@@ -202,11 +231,14 @@ class TestMaterialsPreservation:
             return "새 내용입니다."
 
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=lambda t: t),
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="새 요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple("new.txt", b"new content")])
 
         bundle: MaterialBundle = result["materials"]
@@ -228,11 +260,14 @@ class TestMaterialsPreservation:
             return "새 내용"
 
         with (
-            patch("backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.extract_text", side_effect=mock_extract
+            ),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=lambda t: t),
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="새 요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple("new.txt", b"new")])
 
         bundle: MaterialBundle = result["materials"]
@@ -246,6 +281,7 @@ class TestMaterialsPreservation:
 # Return structure — correct MaterialBundle fields
 # ---------------------------------------------------------------------------
 
+
 class TestReturnStructure:
     def test_returns_dict_with_materials_key(self):
         state = _state_with_materials()
@@ -255,6 +291,7 @@ class TestReturnStructure:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
         assert "materials" in result
 
@@ -266,6 +303,7 @@ class TestReturnStructure:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
         assert isinstance(result["materials"], MaterialBundle)
 
@@ -278,6 +316,7 @@ class TestReturnStructure:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
 
         doc = result["materials"].docs[0]
@@ -294,6 +333,7 @@ class TestReturnStructure:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple("thesis.pdf", b"bytes")])
 
         assert result["materials"].docs[0]["filename"] == "thesis.pdf"
@@ -307,6 +347,7 @@ class TestReturnStructure:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
 
         assert result["materials"].docs[0]["raw_len"] == len(raw_text)
@@ -316,9 +357,12 @@ class TestReturnStructure:
         with (
             patch("backend.app.graph.nodes.material_ingestor.extract_text", return_value="내용"),
             patch("backend.app.graph.nodes.material_ingestor.mask_all", side_effect=lambda t: t),
-            patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="테스트 요약"),
+            patch(
+                "backend.app.graph.nodes.material_ingestor.summarize", return_value="테스트 요약"
+            ),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
 
         assert result["materials"].docs[0]["summary"] == "테스트 요약"
@@ -327,6 +371,7 @@ class TestReturnStructure:
 # ---------------------------------------------------------------------------
 # Multiple files in one call
 # ---------------------------------------------------------------------------
+
 
 class TestMultipleFiles:
     def test_multiple_files_all_ingested(self):
@@ -343,6 +388,7 @@ class TestMultipleFiles:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, files)
 
         assert len(result["materials"].docs) == 3
@@ -360,6 +406,7 @@ class TestMultipleFiles:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, files)
 
         filenames = [d["filename"] for d in result["materials"].docs]
@@ -370,6 +417,7 @@ class TestMultipleFiles:
 # ---------------------------------------------------------------------------
 # Raw bytes input (in-memory file)
 # ---------------------------------------------------------------------------
+
 
 class TestRawBytesInput:
     def test_txt_bytes_ingested(self):
@@ -383,6 +431,7 @@ class TestRawBytesInput:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [("memo.txt", content.encode("utf-8"))])
 
         doc = result["materials"].docs[0]
@@ -399,6 +448,7 @@ class TestRawBytesInput:
             patch("backend.app.graph.nodes.material_ingestor.summarize", return_value="요약"),
         ):
             from backend.app.graph.nodes.material_ingestor import ingest_materials
+
             result = ingest_materials(state, [_make_file_tuple()])
 
         assert len(result["materials"].docs) == 1

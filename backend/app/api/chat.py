@@ -1,28 +1,13 @@
-"""POST /api/chat — drive the LangGraph pipeline and stream events as SSE.
-
-Events emitted:
-  - intent           : {"intent": str}                    after Router
-  - node_started     : {"node": str}                      before each node
-  - preview          : list[DraftItem.model_dump()]       when drafts updated
-  - pending_question : PendingQuestion.model_dump()       when Question fires
-  - done             : {"download_url": str | None}       at end
-  - error            : {"error": str}                     on exception
-
-The graph runs against the in-memory SessionStore as its SessionProvider.
-"""
+"""POST /api/chat — general QA. Plain JSON. Router/Graph bypassed."""
 
 from __future__ import annotations
 
-import json
-from typing import Any, AsyncIterator
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
 
-from backend.app.graph.graph import build_compiled_graph
-from backend.app.graph.nodes.question import resume_with_answer
-from backend.app.graph.state import GraphState
+from backend.app.graph.state import GraphState, append_turn
+from backend.app.llm import solar
+from backend.app.pii import mask_all
 from backend.app.session import store
 
 router = APIRouter()
@@ -33,98 +18,42 @@ class ChatRequest(BaseModel):
     message: str
 
 
-def _to_jsonable(obj: Any) -> Any:
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump()
-    if isinstance(obj, list):
-        return [_to_jsonable(x) for x in obj]
-    if isinstance(obj, dict):
-        return {k: _to_jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, bytes):
-        return f"<{len(obj)} bytes>"
-    return obj
+_QA_SYSTEM = """\
+당신은 한국 국가연구비 지원사업 양식 작성을 돕는 AI 어시스턴트입니다.
+사용자의 일반적인 질문에 친절하고 정확하게 한국어로 답변하세요.
+양식 자동 채우기와 무관한 일반 질문에 대해서도 도움을 드립니다.
+양식을 채우려면 사이드바의 '양식 자동 채우기 시작' 버튼을 사용해 달라고 안내하세요.
+항목별 수정이나 재시도가 필요하면 항목 카드의 ✏ 수정 / 💬 대화 버튼을 안내하세요.
+"""
 
 
-async def _stream_graph(session_id: str, message: str) -> AsyncIterator[dict]:
-    initial = GraphState(user_message=message, session_id=session_id)
-    session = await store.get(session_id)
-    if session and session.graph_state is not None:
-        prior = session.graph_state
-        initial.form_doc = prior.form_doc
-        initial.plans = list(prior.plans)
-        initial.materials = prior.materials
-        initial.history = list(prior.history)
-        initial.drafts = list(prior.drafts)
-        # If a question was pending, treat this user message as the answer:
-        # 1. fold it into the matching ItemPlan via resume_with_answer
-        # 2. force intent="rewrite_item" so the Router skips classification
-        #    (the answer text would otherwise often be classified as
-        #    general_qa and silently end the run) and Planner is bypassed
-        #    (which would otherwise overwrite the patched plans).
-        if prior.pending_question is not None:
-            patched = resume_with_answer(
-                prior.model_copy(update={"pending_question": prior.pending_question}),
-                message,
-            )
-            initial.plans = list(patched["plans"])
-            initial.pending_question = None
-            initial.intent = "rewrite_item"
-
-    graph = build_compiled_graph(store)
-    accumulated: dict[str, object] = {}
-
-    try:
-        async for chunk in graph.astream(initial, stream_mode="updates"):
-            if not isinstance(chunk, dict):
-                continue
-            for node_name, diff in chunk.items():
-                yield {"event": "node_started", "data": json.dumps({"node": node_name})}
-                if not isinstance(diff, dict):
-                    continue
-                accumulated.update(diff)
-                if diff.get("intent"):
-                    yield {
-                        "event": "intent",
-                        "data": json.dumps({"intent": diff["intent"]}),
-                    }
-                if diff.get("form_doc"):
-                    yield {
-                        "event": "form_parsed",
-                        "data": json.dumps(_to_jsonable(diff["form_doc"])),
-                    }
-                if diff.get("drafts"):
-                    yield {
-                        "event": "preview",
-                        "data": json.dumps(_to_jsonable(diff["drafts"])),
-                    }
-                if diff.get("pending_question"):
-                    yield {
-                        "event": "pending_question",
-                        "data": json.dumps(_to_jsonable(diff["pending_question"])),
-                    }
-    except Exception as exc:
-        yield {"event": "error", "data": json.dumps({"error": str(exc)})}
-        return
-
-    try:
-        final_state = initial.model_copy(update=accumulated)
-        await store.save_state(session_id, final_state)
-    except Exception:
-        pass
-
-    sess = await store.get(session_id)
-    download_url = (
-        f"/api/sessions/{session_id}/output.hwpx"
-        if sess and sess.rendered_bytes
-        else None
-    )
-    yield {"event": "done", "data": json.dumps({"download_url": download_url})}
+def _solar_complete(messages: list[dict]) -> str:
+    return str(solar.complete(messages, json_mode=False))
 
 
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
-    if (await store.get(req.session_id)) is None:
-        raise HTTPException(
-            status_code=404, detail=f"세션을 찾을 수 없습니다: {req.session_id}"
-        )
-    return EventSourceResponse(_stream_graph(req.session_id, req.message))
+    session = await store.get(req.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {req.session_id}")
+
+    state = session.graph_state or GraphState(session_id=req.session_id)
+    safe_history = [
+        {"role": t["role"], "content": mask_all(t["content"])} for t in state.history
+    ]
+    safe_user_message = mask_all(req.message)
+
+    messages = [{"role": "system", "content": _QA_SYSTEM}]
+    messages.extend(safe_history)
+    messages.append({"role": "user", "content": safe_user_message})
+
+    try:
+        reply = _solar_complete(messages)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Solar 호출 실패: {exc}") from exc
+
+    new_state = append_turn(state, "user", req.message)
+    new_state = append_turn(new_state, "assistant", reply)
+    await store.save_state(req.session_id, new_state)
+
+    return {"reply": reply}

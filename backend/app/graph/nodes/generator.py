@@ -7,7 +7,7 @@ Zero LangGraph imports per module purity rules.
 
 from __future__ import annotations
 
-from backend.app.graph.state import GraphState, DraftItem, ItemPlan
+from backend.app.graph.state import DraftItem, GraphState, ItemPlan
 from backend.app.llm import solar as _solar_mod
 from backend.app.llm.prompts import build_generator_messages
 from backend.app.pii import scan
@@ -32,11 +32,14 @@ def generate_drafts(state: GraphState) -> dict:
         return {"drafts": []}
 
     pii_item_ids = {item.item_id for item in state.form_doc.items if item.is_pii}
+    non_fillable_ids = {item.item_id for item in state.form_doc.items if not item.fillable}
     label_by_id = {item.item_id: item.label for item in state.form_doc.items}
     drafts: list[DraftItem] = []
 
     for plan in state.plans:
         if plan.item_id in pii_item_ids:
+            continue
+        if plan.item_id in non_fillable_ids:
             continue
 
         if plan.needs_question:
@@ -49,7 +52,6 @@ def generate_drafts(state: GraphState) -> dict:
                     item_id=plan.item_id,
                     text=f"{_NEEDS_INFO_PREFIX} {label} — {question}",
                     citations=[],
-                    approved=False,
                 )
             )
             continue
@@ -60,7 +62,6 @@ def generate_drafts(state: GraphState) -> dict:
                 item_id=plan.item_id,
                 text=text,
                 citations=citations,
-                approved=False,
             )
         )
 

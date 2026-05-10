@@ -1,57 +1,36 @@
 """Central GraphState for the LangGraph form-fill pipeline."""
 
-from typing import Literal, Optional
-
 from pydantic import BaseModel
 
 from backend.app.hwpx.models import FormDoc
 
-Intent = Literal[
-    "upload_form",
-    "upload_material",
-    "start_fill",
-    "rewrite_item",
-    "change_tone",
-    "add_material",
-    "general_qa",
-]
-
 
 class MaterialBundle(BaseModel):
-    docs: list[dict]  # {filename, summary, masked_text, raw_len}
+    docs: list[dict]
 
 
 class ItemPlan(BaseModel):
     item_id: str
-    source_evidence: list[str]  # material doc ids / spans
+    source_evidence: list[str]
     confidence: float
     needs_question: bool
-    question: Optional[str] = None
+    question: str | None = None
 
 
 class DraftItem(BaseModel):
     item_id: str
     text: str
     citations: list[str]
-    approved: bool = False
-
-
-class PendingQuestion(BaseModel):
-    item_id: str
-    question: str
+    locked: bool = False
 
 
 class GraphState(BaseModel):
-    session_id: Optional[str] = None
-    intent: Optional[Intent] = None
-    user_message: Optional[str] = None
-    form_doc: Optional[FormDoc] = None
+    session_id: str | None = None
+    form_doc: FormDoc | None = None
     materials: MaterialBundle = MaterialBundle(docs=[])
     plans: list[ItemPlan] = []
     drafts: list[DraftItem] = []
-    pending_question: Optional[PendingQuestion] = None
-    pending_answer: Optional[str] = None
-    history: list[dict[str, str]] = []  # last 10 turns
+    history: list[dict[str, str]] = []
     errors: list[str] = []
 
 

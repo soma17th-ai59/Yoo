@@ -12,8 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.app.graph.state import GraphState, ItemPlan, MaterialBundle
-from backend.app.hwpx.models import FormDoc, Item, Table, Placeholder
-
+from backend.app.hwpx.models import FormDoc, Item
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,7 +31,9 @@ def _make_item(item_id: str, label: str, is_pii: bool = False) -> Item:
 
 
 def _make_form(*items: Item) -> FormDoc:
-    return FormDoc(sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[])
+    return FormDoc(
+        sections=["Contents/section1.xml"], items=list(items), tables=[], placeholders=[]
+    )
 
 
 def _make_state(form_doc: FormDoc | None = None, docs: list[dict] | None = None) -> GraphState:
@@ -43,8 +44,20 @@ def _make_state(form_doc: FormDoc | None = None, docs: list[dict] | None = None)
 
 
 _SOLAR_PLAN = [
-    {"item_id": "item1", "source_evidence": ["cv.pdf"], "confidence": 0.9, "needs_question": False, "question": None},
-    {"item_id": "item2", "source_evidence": ["paper.pdf"], "confidence": 0.7, "needs_question": False, "question": None},
+    {
+        "item_id": "item1",
+        "source_evidence": ["cv.pdf"],
+        "confidence": 0.9,
+        "needs_question": False,
+        "question": None,
+    },
+    {
+        "item_id": "item2",
+        "source_evidence": ["paper.pdf"],
+        "confidence": 0.7,
+        "needs_question": False,
+        "question": None,
+    },
 ]
 
 
@@ -60,9 +73,18 @@ class TestReturnShape:
 
         with patch(
             "backend.app.graph.nodes.planner._solar_complete",
-            return_value=[{"item_id": "item1", "source_evidence": [], "confidence": 0.8, "needs_question": False, "question": None}],
+            return_value=[
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.8,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert "plans" in result
@@ -73,9 +95,18 @@ class TestReturnShape:
 
         with patch(
             "backend.app.graph.nodes.planner._solar_complete",
-            return_value=[{"item_id": "item1", "source_evidence": [], "confidence": 0.8, "needs_question": False, "question": None}],
+            return_value=[
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.8,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert isinstance(result["plans"], list)
@@ -96,6 +127,7 @@ class TestItemPlanObjects:
             return_value=_SOLAR_PLAN,
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         for plan in result["plans"]:
@@ -110,6 +142,7 @@ class TestItemPlanObjects:
             return_value=_SOLAR_PLAN,
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert len(result["plans"]) == 2
@@ -120,9 +153,18 @@ class TestItemPlanObjects:
 
         with patch(
             "backend.app.graph.nodes.planner._solar_complete",
-            return_value=[{"item_id": "item1", "source_evidence": ["cv.pdf"], "confidence": 0.9, "needs_question": False, "question": None}],
+            return_value=[
+                {
+                    "item_id": "item1",
+                    "source_evidence": ["cv.pdf"],
+                    "confidence": 0.9,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         plan = result["plans"][0]
@@ -144,6 +186,7 @@ class TestPiiItems:
             return_value=[],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         plan = next(p for p in result["plans"] if p.item_id == "pii1")
@@ -158,6 +201,7 @@ class TestPiiItems:
             return_value=[],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         plan = next(p for p in result["plans"] if p.item_id == "pii1")
@@ -172,6 +216,7 @@ class TestPiiItems:
             return_value=[],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         plan = next(p for p in result["plans"] if p.item_id == "pii1")
@@ -189,10 +234,19 @@ class TestPiiItems:
 
         def spy_solar(messages):
             solar_calls.append(messages)
-            return [{"item_id": "item1", "source_evidence": [], "confidence": 0.8, "needs_question": False, "question": None}]
+            return [
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.8,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ]
 
         with patch("backend.app.graph.nodes.planner._solar_complete", side_effect=spy_solar):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         # PII item plan is always fixed
@@ -214,10 +268,19 @@ class TestSolarInput:
 
         def spy(messages):
             captured.extend(messages)
-            return [{"item_id": "research_goal", "source_evidence": ["cv.pdf"], "confidence": 0.8, "needs_question": False, "question": None}]
+            return [
+                {
+                    "item_id": "research_goal",
+                    "source_evidence": ["cv.pdf"],
+                    "confidence": 0.8,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ]
 
         with patch("backend.app.graph.nodes.planner._solar_complete", side_effect=spy):
             from backend.app.graph.nodes.planner import plan_items
+
             plan_items(state)
 
         user_msg = next(m for m in captured if m["role"] == "user")
@@ -231,10 +294,19 @@ class TestSolarInput:
 
         def spy(messages):
             captured.extend(messages)
-            return [{"item_id": "item1", "source_evidence": [], "confidence": 0.5, "needs_question": True, "question": "추가 정보 필요"}]
+            return [
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.5,
+                    "needs_question": True,
+                    "question": "추가 정보 필요",
+                }
+            ]
 
         with patch("backend.app.graph.nodes.planner._solar_complete", side_effect=spy):
             from backend.app.graph.nodes.planner import plan_items
+
             plan_items(state)
 
         user_msg = next(m for m in captured if m["role"] == "user")
@@ -253,9 +325,18 @@ class TestMissingPlans:
 
         with patch(
             "backend.app.graph.nodes.planner._solar_complete",
-            return_value=[{"item_id": "item1", "source_evidence": [], "confidence": 0.8, "needs_question": False, "question": None}],
+            return_value=[
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.8,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert len(result["plans"]) == 2
@@ -268,6 +349,7 @@ class TestMissingPlans:
 
         with patch("backend.app.graph.nodes.planner._solar_complete", return_value=[]):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         plan = result["plans"][0]
@@ -289,6 +371,7 @@ class TestSolarErrors:
             side_effect=RuntimeError("Solar down"),
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert "errors" in result
@@ -303,6 +386,7 @@ class TestSolarErrors:
             side_effect=ValueError("JSON decode error"),
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert "errors" in result
@@ -345,6 +429,7 @@ class TestWrapperKeys:
             return_value={wrapper_key: [self._plan_payload("item1")]},
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert len(result["plans"]) == 1
@@ -360,6 +445,7 @@ class TestWrapperKeys:
             return_value={"meta": "ignored", "weirdKey": [self._plan_payload("item1")]},
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert len(result["plans"]) == 1
@@ -373,9 +459,18 @@ class TestEmptyMaterials:
 
         with patch(
             "backend.app.graph.nodes.planner._solar_complete",
-            return_value=[{"item_id": "item1", "source_evidence": [], "confidence": 0.5, "needs_question": True, "question": "추가 정보 필요"}],
+            return_value=[
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.5,
+                    "needs_question": True,
+                    "question": "추가 정보 필요",
+                }
+            ],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert "plans" in result
@@ -387,6 +482,7 @@ class TestEmptyMaterials:
 
         with patch("backend.app.graph.nodes.planner._solar_complete", return_value=[]):
             from backend.app.graph.nodes.planner import plan_items
+
             result = plan_items(state)
 
         assert result["plans"] == []
@@ -405,9 +501,62 @@ class TestStateMutation:
 
         with patch(
             "backend.app.graph.nodes.planner._solar_complete",
-            return_value=[{"item_id": "item1", "source_evidence": [], "confidence": 0.8, "needs_question": False, "question": None}],
+            return_value=[
+                {
+                    "item_id": "item1",
+                    "source_evidence": [],
+                    "confidence": 0.8,
+                    "needs_question": False,
+                    "question": None,
+                }
+            ],
         ):
             from backend.app.graph.nodes.planner import plan_items
+
             plan_items(state)
 
         assert state.plans == original_plans
+
+
+# ---------------------------------------------------------------------------
+# 9. Non-fillable (label) cells produce no plan
+# ---------------------------------------------------------------------------
+
+
+def test_planner_skips_non_fillable_label_cells(monkeypatch):
+    """Items with fillable=False (table label cells) get no plan at all."""
+    from backend.app.graph.nodes.planner import plan_items
+    from backend.app.graph.state import GraphState
+    from backend.app.hwpx.models import FormDoc, Item
+
+    monkeypatch.setattr(
+        "backend.app.graph.nodes.planner._solar_complete",
+        lambda messages: [],
+    )
+
+    label_cell = Item(
+        item_id="s:tbl0:r0c0",
+        label="자기소개",
+        section="s",
+        kind="table_cell",
+        xml_xpath="/x",
+        fillable=False,
+    )
+    value_cell = Item(
+        item_id="s:tbl0:r0c1",
+        label="자기소개",
+        section="s",
+        kind="table_cell",
+        xml_xpath="/x",
+        fillable=True,
+    )
+    state = GraphState(
+        form_doc=FormDoc(
+            sections=["s"], items=[label_cell, value_cell], tables=[], placeholders=[]
+        ),
+    )
+
+    result = plan_items(state)
+    plan_ids = {p.item_id for p in result["plans"]}
+    assert "s:tbl0:r0c0" not in plan_ids, "label cell should not get a plan"
+    assert "s:tbl0:r0c1" in plan_ids, "value cell should get a plan"

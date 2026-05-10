@@ -15,6 +15,7 @@ from backend.app.llm.solar import complete, stream
 # Helpers to build mock OpenAI response objects
 # ---------------------------------------------------------------------------
 
+
 def _make_response(content: str) -> MagicMock:
     choice = MagicMock()
     choice.message.content = content
@@ -47,6 +48,7 @@ def _make_stream_chunks(texts: list[str]) -> list[MagicMock]:
 # ---------------------------------------------------------------------------
 # Tests for complete()
 # ---------------------------------------------------------------------------
+
 
 class TestComplete:
     def test_returns_string_when_json_mode_false(self):
@@ -95,8 +97,10 @@ class TestComplete:
             _make_response("recovered"),
         ]
 
-        with patch("backend.app.llm.solar._client", mock_client), \
-             patch("backend.app.llm.solar._sleep"):  # skip real sleeps
+        with (
+            patch("backend.app.llm.solar._client", mock_client),
+            patch("backend.app.llm.solar._sleep"),
+        ):  # skip real sleeps
             result = complete([{"role": "user", "content": "hi"}])
 
         assert result == "recovered"
@@ -111,8 +115,10 @@ class TestComplete:
             _make_response("ok"),
         ]
 
-        with patch("backend.app.llm.solar._client", mock_client), \
-             patch("backend.app.llm.solar._sleep"):
+        with (
+            patch("backend.app.llm.solar._client", mock_client),
+            patch("backend.app.llm.solar._sleep"),
+        ):
             result = complete([{"role": "user", "content": "hi"}])
 
         assert result == "ok"
@@ -132,9 +138,11 @@ class TestComplete:
             status_error,
         ]
 
-        with patch("backend.app.llm.solar._client", mock_client), \
-             patch("backend.app.llm.solar._sleep"), \
-             pytest.raises(openai.APIStatusError):
+        with (
+            patch("backend.app.llm.solar._client", mock_client),
+            patch("backend.app.llm.solar._sleep"),
+            pytest.raises(openai.APIStatusError),
+        ):
             complete([{"role": "user", "content": "hi"}])
 
         assert mock_client.chat.completions.create.call_count == 3
@@ -149,9 +157,11 @@ class TestComplete:
         )
         mock_client.chat.completions.create.side_effect = bad_request
 
-        with patch("backend.app.llm.solar._client", mock_client), \
-             patch("backend.app.llm.solar._sleep") as mock_sleep, \
-             pytest.raises(openai.APIStatusError):
+        with (
+            patch("backend.app.llm.solar._client", mock_client),
+            patch("backend.app.llm.solar._sleep") as mock_sleep,
+            pytest.raises(openai.APIStatusError),
+        ):
             complete([{"role": "user", "content": "hi"}])
 
         assert mock_client.chat.completions.create.call_count == 1
@@ -171,6 +181,7 @@ class TestComplete:
 # ---------------------------------------------------------------------------
 # Tests for stream()
 # ---------------------------------------------------------------------------
+
 
 class TestStream:
     def test_yields_text_chunks(self):

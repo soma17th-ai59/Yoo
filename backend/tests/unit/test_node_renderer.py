@@ -1,7 +1,7 @@
 """Unit tests for Renderer node.
 
 render_output(state: GraphState, form_bytes: bytes) -> dict
-  Packs approved drafts + PII placeholders into HWPX bytes.
+  Packs locked drafts + PII placeholders into HWPX bytes.
   Returns {"rendered_bytes": bytes, "preview_md": str}.
 """
 
@@ -10,13 +10,10 @@ from __future__ import annotations
 import io
 import zipfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
-
-from backend.app.graph.state import GraphState, DraftItem, MaterialBundle
-from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
-
+from backend.app.graph.state import DraftItem, GraphState
+from backend.app.hwpx.models import FormDoc, Item, Placeholder
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,8 +45,8 @@ def _make_form(
     )
 
 
-def _make_draft(item_id: str, text: str = "작성된 내용입니다.", approved: bool = True) -> DraftItem:
-    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], approved=approved)
+def _make_draft(item_id: str, text: str = "작성된 내용입니다.", locked: bool = True) -> DraftItem:
+    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], locked=locked)
 
 
 def _make_state(
@@ -75,7 +72,7 @@ def _minimal_hwpx_bytes() -> bytes:
             ' xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">'
             "<hp:p><hp:run><hp:t>연구 목표</hp:t></hp:run></hp:p>"
             "</hs:sec>"
-        ).encode("utf-8")
+        ).encode()
         z.writestr("Contents/section0.xml", section_xml)
     return buf.getvalue()
 
@@ -93,6 +90,7 @@ class TestReturnShape:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert "rendered_bytes" in result
@@ -104,6 +102,7 @@ class TestReturnShape:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert isinstance(result["rendered_bytes"], bytes)
@@ -114,6 +113,7 @@ class TestReturnShape:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert isinstance(result["preview_md"], str)
@@ -140,6 +140,7 @@ class TestPiiEnforcement:
         form_bytes = _minimal_hwpx_bytes()
         with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
             from backend.app.graph.nodes.renderer import render_output
+
             render_output(state, form_bytes)
 
         pii_renderer_draft = next((d for d in captured_drafts if d.item_id == "pii1"), None)
@@ -154,21 +155,22 @@ class TestPiiEnforcement:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert "[본인 직접 입력]" in result["preview_md"]
 
 
 # ---------------------------------------------------------------------------
-# 3. Approved drafts are rendered
+# 3. Locked drafts are rendered; unlocked drafts are not
 # ---------------------------------------------------------------------------
 
 
 class TestApprovedDraftsRendered:
-    def test_approved_draft_included_in_apply_drafts(self):
+    def test_locked_draft_included_in_apply_drafts(self):
         item = _make_item("item1", "연구 목표")
         form = _make_form([item])
-        draft = _make_draft("item1", text="연구 목표 내용", approved=True)
+        draft = _make_draft("item1", text="연구 목표 내용", locked=True)
         state = _make_state(form, [draft])
 
         captured = []
@@ -180,15 +182,16 @@ class TestApprovedDraftsRendered:
         form_bytes = _minimal_hwpx_bytes()
         with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
             from backend.app.graph.nodes.renderer import render_output
+
             render_output(state, form_bytes)
 
         ids = [d.item_id for d in captured]
         assert "item1" in ids
 
-    def test_unapproved_draft_not_rendered(self):
+    def test_unlocked_draft_not_rendered(self):
         item = _make_item("item1", "연구 목표")
         form = _make_form([item])
-        draft = _make_draft("item1", text="미완성", approved=False)
+        draft = _make_draft("item1", text="미완성", locked=False)
         state = _make_state(form, [draft])
 
         captured = []
@@ -200,6 +203,7 @@ class TestApprovedDraftsRendered:
         form_bytes = _minimal_hwpx_bytes()
         with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
             from backend.app.graph.nodes.renderer import render_output
+
             render_output(state, form_bytes)
 
         ids = [d.item_id for d in captured]
@@ -219,6 +223,7 @@ class TestPreviewMarkdown:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert "연구의 필요성" in result["preview_md"]
@@ -230,6 +235,7 @@ class TestPreviewMarkdown:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert "혁신적인 AI 연구" in result["preview_md"]
@@ -241,6 +247,7 @@ class TestPreviewMarkdown:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert "연구 결과" in result["preview_md"]
@@ -258,8 +265,11 @@ class TestUsesApplyDrafts:
         state = _make_state(form, [_make_draft("item1")])
         form_bytes = _minimal_hwpx_bytes()
 
-        with patch("backend.app.graph.nodes.renderer.apply_drafts", return_value=b"patched") as mock_apply:
+        with patch(
+            "backend.app.graph.nodes.renderer.apply_drafts", return_value=b"patched"
+        ) as mock_apply:
             from backend.app.graph.nodes.renderer import render_output
+
             result = render_output(state, form_bytes)
 
         mock_apply.assert_called_once()
@@ -280,6 +290,7 @@ class TestStateMutation:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         render_output(state, form_bytes)
 
         assert state.drafts[0].text == original_text
@@ -297,6 +308,7 @@ class TestEmptyForm:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert "rendered_bytes" in result
@@ -307,6 +319,7 @@ class TestEmptyForm:
         form_bytes = _minimal_hwpx_bytes()
 
         from backend.app.graph.nodes.renderer import render_output
+
         result = render_output(state, form_bytes)
 
         assert result["rendered_bytes"] == form_bytes
@@ -334,6 +347,7 @@ class TestBothPiiAndRegularItems:
         form_bytes = _minimal_hwpx_bytes()
         with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
             from backend.app.graph.nodes.renderer import render_output
+
             render_output(state, form_bytes)
 
         ids = {d.item_id for d in captured}
@@ -354,6 +368,7 @@ class TestBothPiiAndRegularItems:
         form_bytes = _minimal_hwpx_bytes()
         with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
             from backend.app.graph.nodes.renderer import render_output
+
             render_output(state, form_bytes)
 
         pii_rd = next(d for d in captured if d.item_id == "pii1")
@@ -374,6 +389,7 @@ class TestBothPiiAndRegularItems:
         form_bytes = _minimal_hwpx_bytes()
         with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
             from backend.app.graph.nodes.renderer import render_output
+
             render_output(state, form_bytes)
 
         regular_rd = next(d for d in captured if d.item_id == "item1")

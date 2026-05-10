@@ -123,3 +123,67 @@ def test_malformed_xml_raises_value_error():
         z.writestr("Contents/section0.xml", b"<not valid xml")
     with pytest.raises(ValueError, match="encrypted or corrupted"):
         parse_hwpx(buf.getvalue())
+
+
+def _section_with_2col_label_value_table() -> bytes:
+    import io
+    import zipfile
+
+    section_xml = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section"
+        xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:tbl>
+    <hp:tr>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t>자기소개</hp:t></hp:run></hp:p></hp:subList></hp:tc>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t></hp:t></hp:run></hp:p></hp:subList></hp:tc>
+    </hp:tr>
+    <hp:tr>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t>연구계획</hp:t></hp:run></hp:p></hp:subList></hp:tc>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t></hp:t></hp:run></hp:p></hp:subList></hp:tc>
+    </hp:tr>
+  </hp:tbl>
+</hs:sec>
+""".encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        info = zipfile.ZipInfo("mimetype")
+        info.compress_type = zipfile.ZIP_STORED
+        z.writestr(info, b"application/hwp+zip")
+        z.writestr("Contents/section0.xml", section_xml)
+    return buf.getvalue()
+
+
+class TestTwoColLabelValuePairs:
+    def test_value_cells_are_fillable_table_cells(self):
+        doc = parse_hwpx(_section_with_2col_label_value_table())
+        value_cells = [it for it in doc.items if it.fillable and it.kind == "table_cell"]
+        assert len(value_cells) == 2
+        assert {it.label for it in value_cells} == {"자기소개", "연구계획"}
+
+    def test_label_cells_are_non_fillable_table_cells(self):
+        doc = parse_hwpx(_section_with_2col_label_value_table())
+        label_cells = [it for it in doc.items if not it.fillable and it.kind == "table_cell"]
+        assert len(label_cells) == 2
+        assert {it.label for it in label_cells} == {"자기소개", "연구계획"}
+
+    def test_value_cell_item_id_encodes_table_row_col(self):
+        doc = parse_hwpx(_section_with_2col_label_value_table())
+        ids = [it.item_id for it in doc.items if it.fillable and it.kind == "table_cell"]
+        assert any("tbl0:r0c1" in i for i in ids)
+        assert any("tbl0:r1c1" in i for i in ids)
+
+    def test_no_paragraph_items_inside_table(self):
+        doc = parse_hwpx(_section_with_2col_label_value_table())
+        paragraph_items = [it for it in doc.items if it.kind == "paragraph"]
+        assert paragraph_items == []
+
+
+class TestHeaderRowPattern:
+    def test_header_row_then_empty_data_row_emits_value_cells(self):
+        doc = parse_hwpx(FIXTURE.read_bytes())
+        header_cells = [it for it in doc.items if it.kind == "table_cell" and not it.fillable]
+        assert {it.label for it in header_cells} == {"연도", "내용", "비고"}
+        data_cells = [it for it in doc.items if it.kind == "table_cell" and it.fillable]
+        assert len(data_cells) == 3
+        assert {it.label for it in data_cells} == {"연도", "내용", "비고"}

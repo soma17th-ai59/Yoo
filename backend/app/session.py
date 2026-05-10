@@ -4,7 +4,6 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 from backend.app.graph.state import GraphState
 
@@ -15,10 +14,10 @@ _TTL_SECONDS = 2 * 60 * 60  # 2 hours
 class Session:
     session_id: str
     created_at: float = field(default_factory=time.time)
-    form_bytes: Optional[bytes] = None
+    form_bytes: bytes | None = None
     material_files: list[tuple[str, bytes]] = field(default_factory=list)
-    rendered_bytes: Optional[bytes] = None
-    graph_state: Optional[GraphState] = None
+    rendered_bytes: bytes | None = None
+    graph_state: GraphState | None = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -36,7 +35,7 @@ class SessionStore:
             self._sessions[session_id] = Session(session_id=session_id)
         return session_id
 
-    async def get(self, session_id: str) -> Optional[Session]:
+    async def get(self, session_id: str) -> Session | None:
         """Return session if exists and not expired; else None."""
         session = self._sessions.get(session_id)
         if session is None:

@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
+from backend.app.graph.graph import build_compiled_graph
 from backend.app.graph.nodes.renderer import render_output
+from backend.app.graph.state import GraphState
 from backend.app.llm import solar
 from backend.app.pii import mask_all
 from backend.app.session import store
@@ -13,9 +19,129 @@ from backend.app.session import store
 router = APIRouter()
 
 
+def _to_jsonable(obj):
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, list):
+        return [_to_jsonable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _to_jsonable(v) for k, v in obj.items()}
+    return obj
+
+
+async def _stream_fill(session_id: str) -> AsyncIterator[dict]:
+    session = await store.get(session_id)
+    if session is None or session.form_bytes is None:
+        yield {"event": "error", "data": json.dumps({"error": "양식이 업로드되지 않았습니다."})}
+        return
+    if not session.material_files:
+        yield {"event": "error", "data": json.dumps({"error": "자료가 업로드되지 않았습니다."})}
+        return
+
+    initial = GraphState(session_id=session_id)
+    if session.graph_state is not None:
+        initial.materials = session.graph_state.materials
+        initial.history = list(session.graph_state.history)
+
+    graph = build_compiled_graph(store)
+    accumulated: dict = {}
+
+    try:
+        async for chunk in graph.astream(initial, stream_mode="updates"):
+            if not isinstance(chunk, dict):
+                continue
+            for node_name, diff in chunk.items():
+                yield {"event": "node_started", "data": json.dumps({"node": node_name})}
+                if not isinstance(diff, dict):
+                    continue
+                accumulated.update(diff)
+                if diff.get("form_doc"):
+                    yield {
+                        "event": "form_parsed",
+                        "data": json.dumps(_to_jsonable(diff["form_doc"])),
+                    }
+                if diff.get("drafts"):
+                    yield {"event": "preview", "data": json.dumps(_to_jsonable(diff["drafts"]))}
+                if diff.get("errors"):
+                    yield {
+                        "event": "error",
+                        "data": json.dumps(
+                            {"node": node_name, "error": "; ".join(str(e) for e in diff["errors"])}
+                        ),
+                    }
+    except Exception as exc:
+        yield {"event": "error", "data": json.dumps({"error": str(exc)})}
+        return
+
+    final_state = initial.model_copy(update=accumulated)
+    await store.save_state(session_id, final_state)
+    yield {"event": "done", "data": json.dumps({"draft_count": len(final_state.drafts)})}
+
+
+@router.post("/api/sessions/{session_id}/fill")
+async def fill(session_id: str):
+    if (await store.get(session_id)) is None:
+        raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+    return EventSourceResponse(_stream_fill(session_id))
+
+
 class DraftUpdate(BaseModel):
     item_id: str
     text: str
+
+
+class ItemIdRequest(BaseModel):
+    item_id: str
+
+
+def _toggle_locked(state, item_id: str, value: bool):
+    new_drafts = []
+    updated = None
+    for d in state.drafts:
+        if d.item_id == item_id:
+            updated = d.model_copy(update={"locked": value})
+            new_drafts.append(updated)
+        else:
+            new_drafts.append(d)
+    if updated is None:
+        return None, None
+    return state.model_copy(update={"drafts": new_drafts}), updated
+
+
+@router.post("/api/sessions/{session_id}/items/apply")
+async def apply_item(session_id: str, payload: ItemIdRequest):
+    session = await store.get(session_id)
+    if session is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
+    state = session.graph_state
+    if state.form_doc is None:
+        raise HTTPException(status_code=400, detail="form_doc이 없습니다.")
+    item = next((it for it in state.form_doc.items if it.item_id == payload.item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item 미존재: {payload.item_id}")
+    if item.is_pii:
+        raise HTTPException(
+            status_code=400,
+            detail="PII 항목은 항상 [본인 직접 입력]으로 비워두며 적용 대상이 아닙니다.",
+        )
+    new_state, updated = _toggle_locked(state, payload.item_id, True)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+    await store.save_state(session_id, new_state)
+    return updated.model_dump()
+
+
+@router.post("/api/sessions/{session_id}/items/unlock")
+async def unlock_item(session_id: str, payload: ItemIdRequest):
+    session = await store.get(session_id)
+    if session is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
+    state = session.graph_state
+    new_state, updated = _toggle_locked(state, payload.item_id, False)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+    await store.save_state(session_id, new_state)
+    return updated.model_dump()
 
 
 class ItemChatRequest(BaseModel):
@@ -50,34 +176,29 @@ async def create_session():
 
 @router.put("/api/sessions/{session_id}/drafts")
 async def update_draft(session_id: str, payload: DraftUpdate):
-    """Replace one draft's text in the saved graph state and re-render output."""
+    """Replace one draft's text. Locked drafts return 409 — unlock first."""
     session = await store.get(session_id)
     if session is None or session.graph_state is None:
         raise HTTPException(status_code=404, detail="세션 또는 그래프 상태가 없습니다.")
     state = session.graph_state
     if state.form_doc is None:
-        raise HTTPException(status_code=400, detail="form_doc이 없어 재렌더링 불가.")
+        raise HTTPException(status_code=400, detail="form_doc이 없습니다.")
 
-    if not any(d.item_id == payload.item_id for d in state.drafts):
+    target = next((d for d in state.drafts if d.item_id == payload.item_id), None)
+    if target is None:
         raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
+    if target.locked:
+        raise HTTPException(status_code=409, detail="잠긴 항목은 수정 전에 🔓 해제가 필요합니다.")
 
     new_drafts = [
-        d.model_copy(update={"text": payload.text, "approved": True})
-        if d.item_id == payload.item_id
-        else d
+        d.model_copy(update={"text": payload.text}) if d.item_id == payload.item_id else d
         for d in state.drafts
     ]
     new_state = state.model_copy(update={"drafts": new_drafts})
     await store.save_state(session_id, new_state)
 
-    form_bytes = store.get_form_bytes(session_id)
-    if form_bytes:
-        result = render_output(new_state, form_bytes)
-        rendered = result.get("rendered_bytes", b"")
-        if rendered:
-            store.put_rendered_bytes(session_id, rendered)
-
-    return {"ok": True, "item_id": payload.item_id}
+    updated = next(d for d in new_state.drafts if d.item_id == payload.item_id)
+    return updated.model_dump()
 
 
 @router.post("/api/sessions/{session_id}/item-chat")
@@ -107,11 +228,20 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
             detail="PII 항목은 [본인 직접 입력]으로 비워두며 대화 작성을 지원하지 않습니다.",
         )
 
+    target = next((d for d in state.drafts if d.item_id == item_id), None)
+    if target is not None and target.locked:
+        raise HTTPException(
+            status_code=400,
+            detail="잠긴 항목과는 대화할 수 없습니다. 먼저 🔓 해제하세요.",
+        )
+
     plan = next((p for p in state.plans if p.item_id == item_id), None)
-    materials_brief = "\n".join(
-        f"- {m['filename']}: {m.get('summary', '')[:300]}"
-        for m in state.materials.docs[:6]
-    ) or "(자료 없음)"
+    materials_brief = (
+        "\n".join(
+            f"- {m['filename']}: {m.get('summary', '')[:300]}" for m in state.materials.docs[:6]
+        )
+        or "(자료 없음)"
+    )
 
     context = (
         f"## 작성 대상 항목\n"
@@ -143,12 +273,28 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
 
 
 @router.get("/api/sessions/{session_id}/output.hwpx")
-async def download_output(session_id: str):
+async def download_output(session_id: str, include_unlocked: bool = False):
+    """Lazy render — build .hwpx at request time.
+
+    Default: only locked drafts (user-approved) land in the output.
+    `?include_unlocked=true`: every generated draft is also written, for the
+    "비어 있어도 그대로 다운로드" path.
+    """
     session = await store.get(session_id)
-    if session is None or not session.rendered_bytes:
-        raise HTTPException(status_code=404, detail="렌더된 출력이 없습니다.")
+    if session is None:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    if session.form_bytes is None or session.graph_state is None:
+        raise HTTPException(status_code=404, detail="양식 또는 graph_state가 없습니다.")
+
+    result = render_output(
+        session.graph_state, session.form_bytes, include_unlocked=include_unlocked
+    )
+    rendered = result.get("rendered_bytes", b"")
+    if not rendered:
+        raise HTTPException(status_code=500, detail="렌더 실패")
+
     return Response(
-        content=session.rendered_bytes,
+        content=rendered,
         media_type="application/vnd.hancom.hwpx",
         headers={"Content-Disposition": 'attachment; filename="output.hwpx"'},
     )
@@ -191,7 +337,6 @@ async def session_debug(session_id: str):
         return {"saved_state": False}
     return {
         "saved_state": True,
-        "intent": state.intent,
         "errors": state.errors,
         "form_doc": {
             "items": [
@@ -201,10 +346,13 @@ async def session_debug(session_id: str):
         },
         "plans": [p.model_dump() for p in state.plans],
         "drafts": [d.model_dump() for d in state.drafts],
-        "pending_question": state.pending_question.model_dump() if state.pending_question else None,
         "materials_count": len(state.materials.docs),
         "materials": [
-            {"doc_id": d.get("doc_id"), "filename": d.get("filename"), "summary": d.get("summary", "")[:160]}
+            {
+                "doc_id": d.get("doc_id"),
+                "filename": d.get("filename"),
+                "summary": d.get("summary", "")[:160],
+            }
             for d in state.materials.docs
         ],
     }

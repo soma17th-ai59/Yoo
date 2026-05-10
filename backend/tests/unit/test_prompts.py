@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-from backend.app.hwpx.models import FormDoc, Item, Table, Placeholder
+from backend.app.hwpx.models import FormDoc, Item
 from backend.app.llm.prompts import (
-    ROUTER_SYS,
-    PLANNER_SYS,
     GENERATOR_SYS,
+    PLANNER_SYS,
     VERIFIER_SYS,
-    build_router_messages,
-    build_planner_messages,
     build_generator_messages,
+    build_planner_messages,
     build_verifier_messages,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_form_doc() -> FormDoc:
     items = [
@@ -78,32 +76,8 @@ def _make_draft() -> dict:
 # System prompt content tests
 # ---------------------------------------------------------------------------
 
+
 class TestSystemPromptContent:
-    def test_router_sys_nonempty(self):
-        assert isinstance(ROUTER_SYS, str)
-        assert len(ROUTER_SYS) > 100
-
-    def test_router_sys_contains_all_7_intents(self):
-        intents = [
-            "upload_form",
-            "upload_material",
-            "start_fill",
-            "rewrite_item",
-            "change_tone",
-            "add_material",
-            "general_qa",
-        ]
-        for intent in intents:
-            assert intent in ROUTER_SYS, f"ROUTER_SYS missing intent: {intent}"
-
-    def test_router_sys_specifies_json_output(self):
-        assert "intent" in ROUTER_SYS
-        assert "confidence" in ROUTER_SYS
-
-    def test_router_sys_specifies_disambiguation(self):
-        assert "disambiguation" in ROUTER_SYS
-        assert "0.7" in ROUTER_SYS
-
     def test_planner_sys_nonempty(self):
         assert isinstance(PLANNER_SYS, str)
         assert len(PLANNER_SYS) > 100
@@ -124,7 +98,9 @@ class TestSystemPromptContent:
 
     def test_generator_sys_no_pii_instruction(self):
         # Must instruct the model NOT to include personal info
-        has_pii_warning = "이름" in GENERATOR_SYS or "주민번호" in GENERATOR_SYS or "개인정보" in GENERATOR_SYS
+        has_pii_warning = (
+            "이름" in GENERATOR_SYS or "주민번호" in GENERATOR_SYS or "개인정보" in GENERATOR_SYS
+        )
         assert has_pii_warning, "GENERATOR_SYS must warn against PII"
 
     def test_verifier_sys_nonempty(self):
@@ -138,65 +114,9 @@ class TestSystemPromptContent:
 
 
 # ---------------------------------------------------------------------------
-# build_router_messages
-# ---------------------------------------------------------------------------
-
-class TestBuildRouterMessages:
-    def test_returns_list_of_dicts(self):
-        result = build_router_messages([], "양식 채워줘")
-        assert isinstance(result, list)
-        assert all(isinstance(m, dict) for m in result)
-
-    def test_first_message_is_system(self):
-        result = build_router_messages([], "양식 채워줘")
-        assert result[0]["role"] == "system"
-        assert result[0]["content"] == ROUTER_SYS
-
-    def test_last_message_is_user(self):
-        result = build_router_messages([], "양식 채워줘")
-        assert result[-1]["role"] == "user"
-        assert result[-1]["content"] == "양식 채워줘"
-
-    def test_empty_history_gives_two_messages(self):
-        result = build_router_messages([], "안녕")
-        assert len(result) == 2
-
-    def test_history_included_between_system_and_final_user(self):
-        history = [
-            {"role": "user", "content": "파일을 올렸어요"},
-            {"role": "assistant", "content": "파일을 확인했습니다"},
-        ]
-        result = build_router_messages(history, "채워줘")
-        # system + 2 history + final user = 4
-        assert len(result) == 4
-        assert result[0]["role"] == "system"
-        assert result[1]["role"] == "user"
-        assert result[2]["role"] == "assistant"
-        assert result[-1]["role"] == "user"
-        assert result[-1]["content"] == "채워줘"
-
-    def test_history_capped_at_10_messages_interleaved(self):
-        # Realistic interleaved history: 8 pairs = 16 messages; only last 10 kept
-        history = []
-        for i in range(8):
-            history.append({"role": "user", "content": f"질문 {i}"})
-            history.append({"role": "assistant", "content": f"답변 {i}"})
-        result = build_router_messages(history, "최종")
-        # system + up to 10 history messages + final user = 12
-        assert len(result) <= 12
-        assert result[0]["role"] == "system"
-        assert result[-1]["content"] == "최종"
-
-    def test_deterministic(self):
-        history = [{"role": "user", "content": "이전"}]
-        r1 = build_router_messages(history, "질문")
-        r2 = build_router_messages(history, "질문")
-        assert r1 == r2
-
-
-# ---------------------------------------------------------------------------
 # build_planner_messages
 # ---------------------------------------------------------------------------
+
 
 class TestBuildPlannerMessages:
     def test_returns_list_of_dicts(self):
@@ -247,6 +167,7 @@ class TestBuildPlannerMessages:
 # ---------------------------------------------------------------------------
 # build_generator_messages
 # ---------------------------------------------------------------------------
+
 
 class TestBuildGeneratorMessages:
     def test_returns_list_of_dicts(self):
@@ -308,6 +229,7 @@ class TestBuildGeneratorMessages:
 # ---------------------------------------------------------------------------
 # build_verifier_messages
 # ---------------------------------------------------------------------------
+
 
 class TestBuildVerifierMessages:
     def test_returns_list_of_dicts(self):

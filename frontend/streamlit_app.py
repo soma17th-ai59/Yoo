@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 import httpx
 import streamlit as st
 import streamlit.components.v1 as components
-
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -71,10 +70,9 @@ _DEFAULTS = {
     "messages": [],
     "form_doc": None,
     "drafts": [],
-    "download_url": None,
-    "pending_question": None,
     "uploaded_form": None,
     "uploaded_materials": [],
+    "fill_requested": False,
 }
 for key, default in _DEFAULTS.items():
     if key not in st.session_state:
@@ -85,7 +83,7 @@ for key, default in _DEFAULTS.items():
 
 
 def _create_session() -> str:
-    r = httpx.post(f"{BACKEND_URL}/api/sessions", timeout=10.0)
+    r = httpx.post(f"{_current_backend()}/api/sessions", timeout=10.0)
     r.raise_for_status()
     return r.json()["session_id"]
 
@@ -93,7 +91,7 @@ def _create_session() -> str:
 def _upload(kind: str, name: str, data: bytes) -> None:
     sid = st.session_state.session_id
     r = httpx.post(
-        f"{BACKEND_URL}/api/upload",
+        f"{_current_backend()}/api/upload",
         data={"session_id": sid, "kind": kind},
         files={"file": (name, data, "application/octet-stream")},
         timeout=30.0,
@@ -101,13 +99,17 @@ def _upload(kind: str, name: str, data: bytes) -> None:
     r.raise_for_status()
 
 
-def _stream_chat(message: str) -> Iterator[tuple[str, str]]:
+def _current_backend() -> str:
+    return BACKEND_URL
+
+
+def _stream_fill() -> Iterator[tuple[str, str]]:
     sid = st.session_state.session_id
+    timeout = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=10.0)
     with httpx.stream(
         "POST",
-        f"{BACKEND_URL}/api/chat",
-        json={"session_id": sid, "message": message},
-        timeout=120.0,
+        f"{_current_backend()}/api/sessions/{sid}/fill",
+        timeout=timeout,
     ) as r:
         r.raise_for_status()
         event = "message"
@@ -133,11 +135,9 @@ def _reset_state() -> None:
         if key == "session_id":
             continue
         st.session_state[key] = default if not isinstance(default, list) else list(default)
-    # Clear per-draft action state from prior session
     for key in list(st.session_state.keys()):
         if key.startswith(
             (
-                "applied_",
                 "editing_",
                 "edit_text_",
                 "chatting_",
@@ -149,12 +149,51 @@ def _reset_state() -> None:
             del st.session_state[key]
 
 
+def _replace_draft(updated: dict) -> None:
+    for i, d in enumerate(st.session_state.drafts):
+        if d.get("item_id") == updated["item_id"]:
+            st.session_state.drafts[i] = updated
+            return
+
+
+def _apply_item(item_id: str) -> bool:
+    sid = st.session_state.session_id
+    try:
+        r = httpx.post(
+            f"{_current_backend()}/api/sessions/{sid}/items/apply",
+            json={"item_id": item_id},
+            timeout=10.0,
+        )
+        r.raise_for_status()
+        _replace_draft(r.json())
+        return True
+    except Exception as exc:
+        st.error(f"적용 실패: {exc}")
+        return False
+
+
+def _unlock_item(item_id: str) -> bool:
+    sid = st.session_state.session_id
+    try:
+        r = httpx.post(
+            f"{_current_backend()}/api/sessions/{sid}/items/unlock",
+            json={"item_id": item_id},
+            timeout=10.0,
+        )
+        r.raise_for_status()
+        _replace_draft(r.json())
+        return True
+    except Exception as exc:
+        st.error(f"해제 실패: {exc}")
+        return False
+
+
 def _save_draft_edit(item_id: str, text: str) -> bool:
-    """PUT the edited draft to the backend and re-render. Returns True on success."""
+    """PUT the edited draft to the backend. Returns True on success."""
     sid = st.session_state.session_id
     try:
         r = httpx.put(
-            f"{BACKEND_URL}/api/sessions/{sid}/drafts",
+            f"{_current_backend()}/api/sessions/{sid}/drafts",
             json={"item_id": item_id, "text": text},
             timeout=30.0,
         )
@@ -162,11 +201,30 @@ def _save_draft_edit(item_id: str, text: str) -> bool:
     except Exception as exc:
         st.error(f"저장 실패: {exc}")
         return False
-    for di in st.session_state.drafts:
-        if di.get("item_id") == item_id:
-            di["text"] = text
-            break
+    try:
+        _replace_draft(r.json())
+    except Exception:
+        for di in st.session_state.drafts:
+            if di.get("item_id") == item_id:
+                di["text"] = text
+                break
     return True
+
+
+def _fetch_output_bytes(*, include_unlocked: bool = False) -> bytes | None:
+    sid = st.session_state.session_id
+    params = {"include_unlocked": "true"} if include_unlocked else None
+    try:
+        r = httpx.get(
+            f"{_current_backend()}/api/sessions/{sid}/output.hwpx",
+            params=params,
+            timeout=60.0,
+        )
+        r.raise_for_status()
+        return r.content
+    except Exception as exc:
+        st.error(f"다운로드 실패: {exc}")
+        return None
 
 
 def _item_chat(item_id: str, message: str, history: list[dict]) -> str | None:
@@ -174,7 +232,7 @@ def _item_chat(item_id: str, message: str, history: list[dict]) -> str | None:
     sid = st.session_state.session_id
     try:
         r = httpx.post(
-            f"{BACKEND_URL}/api/sessions/{sid}/item-chat",
+            f"{_current_backend()}/api/sessions/{sid}/item-chat",
             json={"item_id": item_id, "message": message, "history": history},
             timeout=120.0,
         )
@@ -193,7 +251,6 @@ def _is_unfilled(text: str) -> bool:
 
 
 from frontend.extract_body import extract_body as _extract_body  # noqa: E402
-
 
 # --- sidebar ---------------------------------------------------------------
 
@@ -240,6 +297,58 @@ with st.sidebar:
         if st.session_state.uploaded_materials:
             st.caption("업로드된 자료: " + ", ".join(st.session_state.uploaded_materials))
 
+    st.divider()
+    st.subheader("자동 채우기")
+    can_fill = bool(st.session_state.uploaded_form) and bool(st.session_state.uploaded_materials)
+    if st.button(
+        "▶ 양식 자동 채우기 시작",
+        use_container_width=True,
+        disabled=not can_fill,
+        type="primary" if can_fill else "secondary",
+    ):
+        st.session_state.fill_requested = True
+        st.rerun()
+    if not can_fill:
+        st.caption("양식과 자료를 모두 업로드하면 활성화됩니다.")
+
+    locked_count = sum(1 for d in st.session_state.drafts if d.get("locked"))
+    total_count = len(st.session_state.drafts)
+    st.caption(f"적용된 항목 {locked_count} / 전체 {total_count}")
+    if st.button(
+        "📥 출력 .hwpx 다운로드",
+        use_container_width=True,
+        disabled=locked_count == 0,
+        key="download_btn",
+    ):
+        data = _fetch_output_bytes()
+        if data:
+            st.download_button(
+                "📁 파일 저장",
+                data=data,
+                file_name="output.hwpx",
+                mime="application/vnd.hancom.hwpx",
+                key="download_save_btn",
+                use_container_width=True,
+            )
+
+    if st.button(
+        "⬇ 미적용 초안 포함 다운로드",
+        use_container_width=True,
+        disabled=not st.session_state.form_doc,
+        key="download_force_btn",
+        help="적용(✓) 안 한 항목도 생성된 초안 텍스트로 채워서 .hwpx를 받습니다. PII 항목은 항상 [본인 직접 입력]으로 표시됩니다.",
+    ):
+        data = _fetch_output_bytes(include_unlocked=True)
+        if data:
+            st.download_button(
+                "📁 파일 저장 (미적용 초안 포함)",
+                data=data,
+                file_name="output.hwpx",
+                mime="application/vnd.hancom.hwpx",
+                key="download_force_save_btn",
+                use_container_width=True,
+            )
+
 
 # --- form-structure visualization ------------------------------------------
 
@@ -274,6 +383,31 @@ if st.session_state.form_doc:
             )
 
 
+# --- fill request handler --------------------------------------------------
+
+if st.session_state.fill_requested:
+    st.session_state.fill_requested = False
+    status = st.empty()
+    try:
+        for event, raw in _stream_fill():
+            payload = json.loads(raw) if raw else None
+            if event == "node_started":
+                status.write(f"… {payload['node']}")
+            elif event == "form_parsed":
+                st.session_state.form_doc = payload
+            elif event == "preview":
+                st.session_state.drafts = payload or []
+            elif event == "done":
+                count = (payload or {}).get("draft_count", 0)
+                status.success(f"초안 {count}개 생성")
+            elif event == "error":
+                err = (payload or {}).get("error", "unknown")
+                st.error(f"채우기 오류: {err}")
+    except Exception as exc:
+        st.error(f"통신 오류: {exc}")
+    st.rerun()
+
+
 # --- chat thread -----------------------------------------------------------
 
 for m in st.session_state.messages:
@@ -281,29 +415,21 @@ for m in st.session_state.messages:
         st.markdown(m["content"])
 
 
-def _process_stream(message: str) -> None:
-    """Consume an SSE stream and update session state."""
-    status = st.empty()
+def _process_chat(message: str) -> None:
+    sid = st.session_state.session_id
     try:
-        for event, data in _stream_chat(message):
-            payload = json.loads(data) if data else None
-            if event == "intent":
-                status.info(f"의도: `{payload['intent']}`")
-            elif event == "node_started":
-                status.write(f"… {payload['node']}")
-            elif event == "form_parsed":
-                st.session_state.form_doc = payload
-            elif event == "preview":
-                st.session_state.drafts = payload or []
-            elif event == "pending_question":
-                st.session_state.pending_question = payload
-            elif event == "done":
-                st.session_state.download_url = payload.get("download_url") if payload else None
-                status.success("완료")
-            elif event == "error":
-                st.error(f"오류: {payload.get('error') if payload else 'unknown'}")
+        r = httpx.post(
+            f"{_current_backend()}/api/chat",
+            json={"session_id": sid, "message": message},
+            timeout=120.0,
+        )
+        r.raise_for_status()
+        reply = r.json().get("reply", "")
     except Exception as exc:
         st.error(f"통신 오류: {exc}")
+        return
+    st.markdown(reply)
+    st.session_state.messages.append({"role": "assistant", "content": reply})
 
 
 user_msg = st.chat_input("무엇을 도와드릴까요?")
@@ -315,13 +441,7 @@ if user_msg:
         with st.chat_message("user"):
             st.markdown(user_msg)
         with st.chat_message("assistant"):
-            _process_stream(user_msg)
-            if st.session_state.drafts:
-                summary = f"초안 {len(st.session_state.drafts)}개 생성"
-                if st.session_state.download_url:
-                    summary += " — 우측 다운로드 버튼을 사용하세요."
-                st.markdown(summary)
-                st.session_state.messages.append({"role": "assistant", "content": summary})
+            _process_chat(user_msg)
 
 
 # --- drafts preview blocks -------------------------------------------------
@@ -339,41 +459,42 @@ if st.session_state.drafts:
     st.subheader("작성된 초안")
     for d in st.session_state.drafts:
         item_id = d.get("item_id", "?")
-        applied = st.session_state.get(f"applied_{item_id}", False)
+        locked = bool(d.get("locked", False))
         editing = st.session_state.get(f"editing_{item_id}", False)
         chatting = st.session_state.get(f"chatting_{item_id}", False)
         label = _item_label(item_id)
         unfilled = _is_unfilled(d.get("text", ""))
 
         with st.container(border=True):
-            badge = ""
-            if applied:
-                badge = "✅"
-            elif unfilled:
-                badge = "⚠️ 미작성"
-            cols = st.columns([4, 1, 1, 1, 1])
+            badge = "🔒 적용됨" if locked else ("⚠️ 미작성" if unfilled else "")
+
+            if locked:
+                cols = st.columns([5, 1])
+                cols[0].markdown(f"**{label}** {badge}")
+                if cols[1].button("🔓 해제", key=f"unlock_{item_id}"):
+                    if _unlock_item(item_id):
+                        st.rerun()
+                st.write(d.get("text", ""))
+                citations = d.get("citations", [])
+                if citations:
+                    st.caption(f"근거: {', '.join(citations)}")
+                continue
+
+            cols = st.columns([4, 1, 1, 1])
             cols[0].markdown(f"**{label}** {badge}")
 
-            if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=applied or editing):
+            if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=editing):
                 if unfilled:
                     st.session_state[f"apply_warn_{item_id}"] = True
-                else:
-                    st.session_state[f"applied_{item_id}"] = True
-                    st.session_state.pop(f"apply_warn_{item_id}", None)
-                st.rerun()
+                    st.rerun()
+                elif _apply_item(item_id):
+                    st.rerun()
 
-            if cols[2].button("✏ 수정", key=f"edit_{item_id}", disabled=applied):
+            if cols[2].button("✏ 수정", key=f"edit_{item_id}"):
                 st.session_state[f"editing_{item_id}"] = not editing
                 st.rerun()
 
-            if cols[3].button("🔁 다시", key=f"redo_{item_id}", disabled=applied or editing):
-                redo_msg = f"{label} 항목을 다시 써줘"
-                st.session_state.messages.append({"role": "user", "content": redo_msg})
-                with st.chat_message("assistant"):
-                    _process_stream(redo_msg)
-                st.rerun()
-
-            if cols[4].button("💬 대화", key=f"chat_{item_id}", disabled=applied):
+            if cols[3].button("💬 대화", key=f"chat_{item_id}"):
                 st.session_state[f"chatting_{item_id}"] = not chatting
                 st.rerun()
 
@@ -409,12 +530,11 @@ if st.session_state.drafts:
                 hist_key = f"chat_history_{item_id}"
                 history = st.session_state.get(hist_key, [])
                 with st.container(border=True):
-                    st.markdown(f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다.")
+                    st.markdown(
+                        f"💬 **'{label}' 항목과 대화하기** — 정보를 알려주시면 본문을 함께 만들어 드립니다."
+                    )
                     for m in history:
                         with st.chat_message(m["role"]):
-                            # Render as normal-body-sized plain text (no markdown
-                            # heading / bold escalation) so LLM responses stay
-                            # consistent with the rest of the page.
                             import html as _html
 
                             safe = _html.escape(m["content"]).replace("\n", "<br>")
@@ -425,7 +545,9 @@ if st.session_state.drafts:
 
                     with st.form(f"chat_form_{item_id}", clear_on_submit=True):
                         typed = st.text_input(
-                            "메시지", key=f"chat_input_{item_id}", label_visibility="collapsed",
+                            "메시지",
+                            key=f"chat_input_{item_id}",
+                            label_visibility="collapsed",
                             placeholder="이 항목에 대한 정보를 입력하거나 질문하세요…",
                         )
                         send = st.form_submit_button("전송")
@@ -454,60 +576,39 @@ if st.session_state.drafts:
                             disabled=not body_preview,
                         ):
                             if body_preview and _save_draft_edit(item_id, body_preview):
-                                st.session_state[f"chatting_{item_id}"] = False
-                                st.session_state[f"applied_{item_id}"] = True
-                                st.session_state[hist_key] = []
-                                st.rerun()
+                                if _apply_item(item_id):
+                                    st.session_state[f"chatting_{item_id}"] = False
+                                    st.session_state[hist_key] = []
+                                    st.rerun()
                         if action_cols[1].button("대화 닫기", key=f"close_chat_{item_id}"):
                             st.session_state[f"chatting_{item_id}"] = False
                             st.rerun()
-
-
-# --- pending question ------------------------------------------------------
-
-if st.session_state.pending_question:
-    pq = st.session_state.pending_question
-    with st.container(border=True):
-        st.warning(f"❓ {pq.get('question', '추가 정보가 필요합니다.')}")
-        ans_key = f"answer_{pq.get('item_id', 'q')}"
-        ans = st.text_input("답변", key=ans_key)
-        if st.button("답변 전송", key=f"send_{pq.get('item_id', 'q')}"):
-            st.session_state.pending_question = None
-            st.session_state.messages.append({"role": "user", "content": ans})
-            _process_stream(ans)
-            st.rerun()
 
 
 # --- 직접 작성이 필요한 항목 안내 ------------------------------------------
 
 
 def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
-    """Return (pii_items, gap_items) — items the user needs to fill in manually.
-
-    pii_items   — flagged PII (Generator never writes these).
-    gap_items   — non-PII items with no draft yet (Planner didn't have enough
-                  to start, or Generator skipped them via needs_question).
-    """
     fd = st.session_state.form_doc or {}
     items = fd.get("items", [])
     drafted_ids = {d.get("item_id") for d in st.session_state.drafts}
 
     pii_items = [it for it in items if it.get("is_pii")]
     gap_items = [
-        it
-        for it in items
-        if not it.get("is_pii") and it.get("item_id") not in drafted_ids
+        it for it in items if not it.get("is_pii") and it.get("item_id") not in drafted_ids
     ]
     return pii_items, gap_items
 
 
-if st.session_state.form_doc and (st.session_state.drafts or st.session_state.download_url):
+if st.session_state.form_doc and st.session_state.drafts:
     pii_items, gap_items = _needs_manual_entry()
     if pii_items or gap_items:
         with st.container(border=True):
             st.markdown("### ✍️ 직접 작성이 필요한 항목")
             if pii_items:
-                st.markdown("**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**")
+                st.markdown(
+                    "**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**"
+                )
                 for it in pii_items:
                     st.markdown(f"- {it.get('label', '?')}")
             if gap_items:
@@ -517,22 +618,3 @@ if st.session_state.form_doc and (st.session_state.drafts or st.session_state.do
                 st.caption(
                     "💡 채팅으로 정보를 더 알려주시거나, 다운로드한 .hwpx에서 직접 채우세요."
                 )
-
-
-# --- download --------------------------------------------------------------
-
-if st.session_state.download_url:
-    unfilled_drafts = [
-        d for d in st.session_state.drafts if _is_unfilled(d.get("text", ""))
-    ]
-    if unfilled_drafts:
-        names = "\n".join(f"  • {_item_label(d.get('item_id'))}" for d in unfilled_drafts)
-        st.warning(
-            f"⚠ 다음 {len(unfilled_drafts)}개 항목이 아직 비어 있습니다 (`[추가 정보 필요]`). "
-            f"지금 다운로드하면 해당 항목은 비어 있는 채로 저장됩니다.\n\n{names}\n\n"
-            "💬 대화 또는 ✏ 수정으로 채운 뒤 다시 다운로드하세요."
-        )
-    st.link_button(
-        "📥 출력 .hwpx 다운로드",
-        f"{BACKEND_URL}{st.session_state.download_url}",
-    )

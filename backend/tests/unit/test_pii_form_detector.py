@@ -5,9 +5,8 @@ flag_pii_items(doc: FormDoc) -> FormDoc
   Returns updated FormDoc; items without PII labels are left as-is.
 """
 
-import pytest
+from backend.app.hwpx.models import FormDoc, Item
 from backend.app.pii.form_detector import flag_pii_items
-from backend.app.hwpx.models import FormDoc, Item, Table, Placeholder
 
 
 def _make_doc(*items: Item) -> FormDoc:
@@ -26,6 +25,7 @@ def _item(label: str, item_id: str = "i1") -> Item:
 
 # ── 성명 / 이름 (name) ────────────────────────────────────────────────────────
 
+
 def test_flag_pii_item_성명():
     doc = _make_doc(_item("성명"))
     assert flag_pii_items(doc).items[0].is_pii is True
@@ -43,6 +43,7 @@ def test_flag_pii_item_label_with_성명_prefix():
 
 # ── 주민등록번호 (resident registration) ─────────────────────────────────────
 
+
 def test_flag_pii_item_주민등록번호():
     doc = _make_doc(_item("주민등록번호"))
     assert flag_pii_items(doc).items[0].is_pii is True
@@ -54,6 +55,7 @@ def test_flag_pii_item_주민번호():
 
 
 # ── 연락처 / 전화번호 (phone) ─────────────────────────────────────────────────
+
 
 def test_flag_pii_item_연락처():
     doc = _make_doc(_item("연락처"))
@@ -72,6 +74,7 @@ def test_flag_pii_item_전화():
 
 # ── 주소 (address) ────────────────────────────────────────────────────────────
 
+
 def test_flag_pii_item_주소():
     doc = _make_doc(_item("주소"))
     assert flag_pii_items(doc).items[0].is_pii is True
@@ -84,6 +87,7 @@ def test_flag_pii_item_거주지주소():
 
 # ── 계좌 (bank account) ───────────────────────────────────────────────────────
 
+
 def test_flag_pii_item_계좌번호():
     doc = _make_doc(_item("계좌번호"))
     assert flag_pii_items(doc).items[0].is_pii is True
@@ -95,6 +99,7 @@ def test_flag_pii_item_계좌():
 
 
 # ── 학번 / 사번 (ID numbers) ─────────────────────────────────────────────────
+
 
 def test_flag_pii_item_학번():
     doc = _make_doc(_item("학번"))
@@ -113,6 +118,7 @@ def test_flag_pii_item_직원번호():
 
 # ── 이메일 (email) ────────────────────────────────────────────────────────────
 
+
 def test_flag_pii_item_이메일():
     doc = _make_doc(_item("이메일"))
     assert flag_pii_items(doc).items[0].is_pii is True
@@ -125,6 +131,7 @@ def test_flag_pii_item_이메일주소():
 
 # ── 카드번호 / 외국인등록번호 ─────────────────────────────────────────────────
 
+
 def test_flag_pii_item_카드번호():
     doc = _make_doc(_item("카드번호"))
     assert flag_pii_items(doc).items[0].is_pii is True
@@ -136,6 +143,7 @@ def test_flag_pii_item_외국인등록번호():
 
 
 # ── 비PII 항목 (non-PII items must not be flagged) ───────────────────────────
+
 
 def test_no_flag_연구의필요성():
     doc = _make_doc(_item("연구의 필요성"))
@@ -159,6 +167,7 @@ def test_no_flag_연구기간():
 
 # ── 복합 (mixed items — only PII ones flagged) ────────────────────────────────
 
+
 def test_flag_only_pii_items_in_mixed_doc():
     items = [
         _item("성명", "i1"),
@@ -179,6 +188,7 @@ def test_flag_only_pii_items_in_mixed_doc():
 
 # ── 불변성 (original doc items are not mutated) ───────────────────────────────
 
+
 def test_original_doc_not_mutated():
     item = _item("성명")
     doc = _make_doc(item)
@@ -189,6 +199,7 @@ def test_original_doc_not_mutated():
 
 
 # ── 빈 FormDoc (empty FormDoc handled gracefully) ─────────────────────────────
+
 
 def test_empty_doc():
     doc = FormDoc(sections=[], items=[], tables=[], placeholders=[])

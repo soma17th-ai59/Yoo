@@ -13,11 +13,9 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from backend.app.graph.nodes.form_parser import parse_form
 from backend.app.graph.state import GraphState
-from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
+from backend.app.hwpx.models import FormDoc, Item
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "forms" / "sample_form.hwpx"
 
@@ -42,8 +40,7 @@ def _make_doc(*items: Item) -> FormDoc:
 def _make_hwpx_bytes(labels: list[str]) -> bytes:
     """Build a minimal HWPX ZIP with one paragraph per label."""
     paragraphs = "".join(
-        f"  <hp:p><hp:run><hp:t>{label}</hp:t></hp:run></hp:p>\n"
-        for label in labels
+        f"  <hp:p><hp:run><hp:t>{label}</hp:t></hp:run></hp:p>\n" for label in labels
     )
     section_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -51,7 +48,7 @@ def _make_hwpx_bytes(labels: list[str]) -> bytes:
         ' xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">\n'
         f"{paragraphs}"
         "</hs:sec>\n"
-    ).encode("utf-8")
+    ).encode()
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
@@ -94,9 +91,7 @@ def test_pii_items_flagged_true():
         _make_item("i2", "연구의 필요성"),
     )
     state = GraphState()
-    with patch(
-        "backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc
-    ):
+    with patch("backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc):
         result = parse_form(state, b"fake-bytes")
 
     items = {it.item_id: it for it in result["form_doc"].items}
@@ -110,9 +105,7 @@ def test_non_pii_items_flagged_false():
         _make_item("i2", "연구의 필요성"),
     )
     state = GraphState()
-    with patch(
-        "backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc
-    ):
+    with patch("backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc):
         result = parse_form(state, b"fake-bytes")
 
     items = {it.item_id: it for it in result["form_doc"].items}
@@ -130,9 +123,7 @@ def test_placeholder_created_for_each_pii_item():
         _make_item("i3", "연구 목표"),
     )
     state = GraphState()
-    with patch(
-        "backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc
-    ):
+    with patch("backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc):
         result = parse_form(state, b"fake-bytes")
 
     placeholders = result["form_doc"].placeholders
@@ -149,9 +140,7 @@ def test_placeholder_text_is_본인직접입력():
         _make_item("i2", "연구 기간"),
     )
     state = GraphState()
-    with patch(
-        "backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc
-    ):
+    with patch("backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc):
         result = parse_form(state, b"fake-bytes")
 
     for ph in result["form_doc"].placeholders:
@@ -167,9 +156,7 @@ def test_placeholder_count_equals_pii_item_count():
         _make_item("i4", "연구의 필요성"),
     )
     state = GraphState()
-    with patch(
-        "backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc
-    ):
+    with patch("backend.app.graph.nodes.form_parser.parse_hwpx", return_value=pii_doc):
         result = parse_form(state, b"fake-bytes")
 
     pii_count = sum(1 for it in result["form_doc"].items if it.is_pii)
@@ -183,9 +170,7 @@ def test_no_placeholder_when_no_pii_items():
         _make_item("i2", "예상 결과"),
     )
     state = GraphState()
-    with patch(
-        "backend.app.graph.nodes.form_parser.parse_hwpx", return_value=clean_doc
-    ):
+    with patch("backend.app.graph.nodes.form_parser.parse_hwpx", return_value=clean_doc):
         result = parse_form(state, b"fake-bytes")
 
     assert result["form_doc"].placeholders == []
@@ -196,9 +181,9 @@ def test_no_placeholder_when_no_pii_items():
 
 def test_original_state_not_mutated():
     """parse_form must not mutate the incoming GraphState."""
-    state = GraphState(user_message="hello")
+    state = GraphState(session_id="test-session")
     parse_form(state, FIXTURE.read_bytes())
-    assert state.user_message == "hello"
+    assert state.session_id == "test-session"
     assert state.form_doc is None
 
 

@@ -1,34 +1,25 @@
 """Tests for GraphState and related models in backend.app.graph.state."""
 
-import pytest
-from pydantic import ValidationError
-
 from backend.app.graph.state import (
     DraftItem,
     GraphState,
     ItemPlan,
-    MaterialBundle,
-    PendingQuestion,
     append_turn,
 )
 from backend.app.hwpx.models import FormDoc, Item, Placeholder, Table
-
 
 # ---------------------------------------------------------------------------
 # 1. Default empty state
 # ---------------------------------------------------------------------------
 
+
 def test_graph_state_default_empty():
     state = GraphState()
     assert state.session_id is None
-    assert state.intent is None
-    assert state.user_message is None
     assert state.form_doc is None
     assert state.materials.docs == []
     assert state.plans == []
     assert state.drafts == []
-    assert state.pending_question is None
-    assert state.pending_answer is None
     assert state.history == []
     assert state.errors == []
 
@@ -37,19 +28,16 @@ def test_graph_state_default_empty():
 # 2. model_dump produces expected dict shape
 # ---------------------------------------------------------------------------
 
+
 def test_graph_state_model_dump_shape():
     state = GraphState()
     d = state.model_dump()
     assert set(d.keys()) == {
         "session_id",
-        "intent",
-        "user_message",
         "form_doc",
         "materials",
         "plans",
         "drafts",
-        "pending_question",
-        "pending_answer",
         "history",
         "errors",
     }
@@ -64,10 +52,9 @@ def test_graph_state_model_dump_shape():
 # 3. Round-trip serialization
 # ---------------------------------------------------------------------------
 
+
 def test_graph_state_round_trip():
     state = GraphState(
-        intent="start_fill",
-        user_message="안녕하세요",
         errors=["테스트 오류"],
     )
     restored = GraphState.model_validate(state.model_dump())
@@ -77,6 +64,7 @@ def test_graph_state_round_trip():
 # ---------------------------------------------------------------------------
 # 4. ItemPlan serializes/deserializes correctly
 # ---------------------------------------------------------------------------
+
 
 def test_item_plan_round_trip():
     plan = ItemPlan(
@@ -105,12 +93,13 @@ def test_item_plan_with_question():
 # 5. DraftItem serializes/deserializes correctly
 # ---------------------------------------------------------------------------
 
+
 def test_draft_item_round_trip():
     draft = DraftItem(
         item_id="sec0:p0",
         text="이 연구는 …",
         citations=["mat_001:p3", "mat_002:p1"],
-        approved=True,
+        locked=True,
     )
     restored = DraftItem.model_validate(draft.model_dump())
     assert restored == draft
@@ -118,12 +107,13 @@ def test_draft_item_round_trip():
 
 def test_draft_item_defaults():
     draft = DraftItem(item_id="sec0:p0", text="내용", citations=[])
-    assert draft.approved is False
+    assert draft.locked is False
 
 
 # ---------------------------------------------------------------------------
 # 6. append_turn basic
 # ---------------------------------------------------------------------------
+
 
 def test_append_turn_adds_entry():
     state = GraphState()
@@ -144,6 +134,7 @@ def test_append_turn_multiple():
 # 7. append_turn with 12 turns keeps only last 10
 # ---------------------------------------------------------------------------
 
+
 def test_append_turn_truncation():
     state = GraphState()
     for i in range(12):
@@ -161,6 +152,7 @@ def test_append_turn_truncation():
 # 8. Original state is not mutated by append_turn
 # ---------------------------------------------------------------------------
 
+
 def test_append_turn_immutable():
     original = GraphState()
     _ = append_turn(original, "user", "변경 없음")
@@ -177,6 +169,7 @@ def test_append_turn_does_not_share_dict_references():
 # ---------------------------------------------------------------------------
 # 9. GraphState with form_doc round-trip
 # ---------------------------------------------------------------------------
+
 
 def test_graph_state_with_form_doc_round_trip():
     form_doc = FormDoc(
@@ -210,32 +203,3 @@ def test_graph_state_with_form_doc_round_trip():
     assert restored == state
     assert restored.form_doc is not None
     assert restored.form_doc.items[0].label == "연구 목표"
-
-
-# ---------------------------------------------------------------------------
-# 10. intent field only accepts the 7 defined literals
-# ---------------------------------------------------------------------------
-
-def test_intent_valid_literals():
-    valid = [
-        "upload_form",
-        "upload_material",
-        "start_fill",
-        "rewrite_item",
-        "change_tone",
-        "add_material",
-        "general_qa",
-    ]
-    for v in valid:
-        state = GraphState(intent=v)
-        assert state.intent == v
-
-
-def test_intent_rejects_invalid():
-    with pytest.raises(ValidationError):
-        GraphState(intent="unknown_intent")
-
-
-def test_intent_none_is_valid():
-    state = GraphState(intent=None)
-    assert state.intent is None
