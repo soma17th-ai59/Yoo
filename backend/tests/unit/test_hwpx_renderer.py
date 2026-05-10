@@ -125,3 +125,46 @@ def test_apply_drafts_invalid_cell_id_is_no_op():
     )
     doc = parse_hwpx(out)
     assert all("무시됨" not in (it.label or "") for it in doc.items)
+
+
+def test_apply_drafts_paragraph_preserves_label():
+    """A paragraph item's label IS its paragraph text. Applying a draft must
+    keep the label paragraph intact and add the draft as a NEW paragraph
+    immediately below — same spirit as the table-cell rule (write to the
+    adjacent slot, never overwrite the label)."""
+    src = FIXTURE.read_bytes()
+    doc = parse_hwpx(src)
+    target = next(it for it in doc.items if it.kind == "paragraph")
+    original_label = target.label
+
+    out = apply_drafts(src, [DraftItem(item_id=target.item_id, text="유승헌")])
+    new_doc = parse_hwpx(out)
+    paragraph_labels = [it.label for it in new_doc.items if it.kind == "paragraph"]
+    assert original_label in paragraph_labels, (
+        f"label '{original_label}' was overwritten; remaining paragraphs={paragraph_labels}"
+    )
+    assert "유승헌" in paragraph_labels, (
+        f"draft text not written as a sibling paragraph; remaining paragraphs={paragraph_labels}"
+    )
+    # Order matters: draft comes immediately after its label.
+    assert paragraph_labels.index("유승헌") == paragraph_labels.index(original_label) + 1
+
+
+def test_apply_drafts_paragraph_multiline_preserves_label():
+    """Multi-line draft becomes one sibling paragraph per line, all after
+    the label paragraph."""
+    src = FIXTURE.read_bytes()
+    doc = parse_hwpx(src)
+    target = next(it for it in doc.items if it.kind == "paragraph")
+    original_label = target.label
+
+    out = apply_drafts(
+        src, [DraftItem(item_id=target.item_id, text="첫째 줄\n둘째 줄\n셋째 줄")]
+    )
+    new_doc = parse_hwpx(out)
+    paragraph_labels = [it.label for it in new_doc.items if it.kind == "paragraph"]
+    assert original_label in paragraph_labels
+    label_idx = paragraph_labels.index(original_label)
+    assert paragraph_labels[label_idx + 1] == "첫째 줄"
+    assert paragraph_labels[label_idx + 2] == "둘째 줄"
+    assert paragraph_labels[label_idx + 3] == "셋째 줄"
