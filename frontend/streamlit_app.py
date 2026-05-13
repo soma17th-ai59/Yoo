@@ -243,11 +243,27 @@ def _item_chat(item_id: str, message: str, history: list[dict]) -> str | None:
         return None
 
 
-_NEEDS_INFO_PREFIX = "[추가 정보 필요]"
+_STATUS_BADGES: dict[str, str] = {
+    "needs_review": "🟡 검토 필요",
+    "needs_info": "🔵 추가 정보 필요",
+    "needs_check": "🔴 확인 필요",
+    "pii": "🔒 개인정보 (직접 입력)",
+}
 
 
-def _is_unfilled(text: str) -> bool:
-    return text.strip().startswith(_NEEDS_INFO_PREFIX)
+def _status_of(d: dict) -> str:
+    return d.get("status") or "ok"
+
+
+def _is_pii_draft(d: dict) -> bool:
+    return bool(d.get("is_pii")) or _status_of(d) == "pii"
+
+
+def _is_unfilled(d: dict) -> bool:
+    s = _status_of(d)
+    if s in {"needs_info", "needs_check", "pii"}:
+        return not (d.get("text") or "").strip()
+    return False
 
 
 from frontend.extract_body import extract_body as _extract_body  # noqa: E402
@@ -336,7 +352,7 @@ with st.sidebar:
         use_container_width=True,
         disabled=not st.session_state.form_doc,
         key="download_force_btn",
-        help="적용(✓) 안 한 항목도 생성된 초안 텍스트로 채워서 .hwpx를 받습니다. PII 항목은 항상 [본인 직접 입력]으로 표시됩니다.",
+        help="적용(✓) 안 한 항목도 생성된 초안 텍스트로 채워서 .hwpx를 받습니다. PII 항목은 사용자가 입력한 내용 그대로 들어갑니다.",
     ):
         data = _fetch_output_bytes(include_unlocked=True)
         if data:
@@ -463,53 +479,85 @@ if st.session_state.drafts:
         editing = st.session_state.get(f"editing_{item_id}", False)
         chatting = st.session_state.get(f"chatting_{item_id}", False)
         label = _item_label(item_id)
-        unfilled = _is_unfilled(d.get("text", ""))
+        status = _status_of(d)
+        is_pii = _is_pii_draft(d)
+        unfilled = _is_unfilled(d)
+        text = d.get("text", "") or ""
 
         with st.container(border=True):
-            badge = "🔒 적용됨" if locked else ("⚠️ 미작성" if unfilled else "")
+            badges: list[str] = []
+            if locked:
+                badges.append("🔒 적용됨")
+            if status in _STATUS_BADGES:
+                badges.append(_STATUS_BADGES[status])
+            if not locked and not is_pii and unfilled:
+                badges.append("⚠️ 미작성")
+            badge = "  ".join(badges)
 
             if locked:
                 cols = st.columns([5, 1])
-                cols[0].markdown(f"**{label}** {badge}")
+                cols[0].markdown(f"**{label}**  {badge}")
                 if cols[1].button("🔓 해제", key=f"unlock_{item_id}"):
                     if _unlock_item(item_id):
                         st.rerun()
-                st.write(d.get("text", ""))
+                st.write(text if text else "_(빈 값)_")
                 citations = d.get("citations", [])
-                if citations:
+                if citations and not is_pii:
                     st.caption(f"근거: {', '.join(citations)}")
                 continue
 
-            cols = st.columns([4, 1, 1, 1])
-            cols[0].markdown(f"**{label}** {badge}")
-
-            if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=editing):
-                if unfilled:
-                    st.session_state[f"apply_warn_{item_id}"] = True
+            # PII items get only 적용/수정 (no 대화 — LLM path is blocked for PII).
+            if is_pii:
+                cols = st.columns([5, 1, 1])
+                cols[0].markdown(f"**{label}**  {badge}")
+                if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=editing):
+                    if not text.strip():
+                        st.session_state[f"apply_warn_{item_id}"] = True
+                        st.rerun()
+                    elif _apply_item(item_id):
+                        st.rerun()
+                if cols[2].button("✏ 수정", key=f"edit_{item_id}"):
+                    st.session_state[f"editing_{item_id}"] = not editing
                     st.rerun()
-                elif _apply_item(item_id):
+                st.caption("AI는 이 항목을 작성하지 않습니다. 직접 입력해 주세요.")
+            else:
+                cols = st.columns([4, 1, 1, 1])
+                cols[0].markdown(f"**{label}**  {badge}")
+
+                if cols[1].button("✓ 적용", key=f"apply_{item_id}", disabled=editing):
+                    if unfilled:
+                        st.session_state[f"apply_warn_{item_id}"] = True
+                        st.rerun()
+                    elif _apply_item(item_id):
+                        st.rerun()
+
+                if cols[2].button("✏ 수정", key=f"edit_{item_id}"):
+                    st.session_state[f"editing_{item_id}"] = not editing
                     st.rerun()
 
-            if cols[2].button("✏ 수정", key=f"edit_{item_id}"):
-                st.session_state[f"editing_{item_id}"] = not editing
-                st.rerun()
-
-            if cols[3].button("💬 대화", key=f"chat_{item_id}"):
-                st.session_state[f"chatting_{item_id}"] = not chatting
-                st.rerun()
+                if cols[3].button("💬 대화", key=f"chat_{item_id}"):
+                    st.session_state[f"chatting_{item_id}"] = not chatting
+                    st.rerun()
 
             if st.session_state.pop(f"apply_warn_{item_id}", False):
-                st.warning(
-                    f"⚠ '{label}' 항목이 아직 비어 있습니다 (`[추가 정보 필요]`). "
-                    "💬 대화로 채우거나 ✏ 수정으로 직접 입력한 뒤 적용해 주세요."
-                )
+                if is_pii:
+                    st.warning(
+                        f"⚠ '{label}' 항목이 비어 있습니다. ✏ 수정으로 직접 입력 후 적용해 주세요."
+                    )
+                else:
+                    st.warning(
+                        f"⚠ '{label}' 항목이 아직 비어 있습니다. "
+                        "💬 대화로 채우거나 ✏ 수정으로 직접 입력한 뒤 적용해 주세요."
+                    )
 
             if editing:
+                edit_label = "직접 입력" if is_pii else "본문 수정"
                 new_text = st.text_area(
-                    "본문 수정",
-                    value=d.get("text", ""),
+                    edit_label,
+                    value=text,
                     key=f"edit_text_{item_id}",
-                    height=160,
+                    height=120 if is_pii else 160,
+                    placeholder="여기에 입력…" if is_pii else "",
                 )
                 save_col, cancel_col = st.columns([1, 1])
                 if save_col.button("저장", key=f"save_{item_id}"):
@@ -520,10 +568,15 @@ if st.session_state.drafts:
                     st.session_state[f"editing_{item_id}"] = False
                     st.rerun()
             else:
-                st.write(d.get("text", ""))
+                if text:
+                    st.write(text)
+                elif is_pii:
+                    st.write("_(미입력 — ✏ 수정으로 직접 입력하세요)_")
+                else:
+                    st.write("_(미작성)_")
 
             citations = d.get("citations", [])
-            if citations:
+            if citations and not is_pii:
                 st.caption(f"근거: {', '.join(citations)}")
 
             if chatting:
@@ -588,33 +641,18 @@ if st.session_state.drafts:
 # --- 직접 작성이 필요한 항목 안내 ------------------------------------------
 
 
-def _needs_manual_entry() -> tuple[list[dict], list[dict]]:
+def _gap_items() -> list[dict]:
     fd = st.session_state.form_doc or {}
     items = fd.get("items", [])
     drafted_ids = {d.get("item_id") for d in st.session_state.drafts}
-
-    pii_items = [it for it in items if it.get("is_pii")]
-    gap_items = [
-        it for it in items if not it.get("is_pii") and it.get("item_id") not in drafted_ids
-    ]
-    return pii_items, gap_items
+    return [it for it in items if not it.get("is_pii") and it.get("item_id") not in drafted_ids]
 
 
 if st.session_state.form_doc and st.session_state.drafts:
-    pii_items, gap_items = _needs_manual_entry()
-    if pii_items or gap_items:
+    gap_items = _gap_items()
+    if gap_items:
         with st.container(border=True):
-            st.markdown("### ✍️ 직접 작성이 필요한 항목")
-            if pii_items:
-                st.markdown(
-                    "**🔒 개인정보 (AI는 작성하지 않습니다 — `[본인 직접 입력]`로 비워둠)**"
-                )
-                for it in pii_items:
-                    st.markdown(f"- {it.get('label', '?')}")
-            if gap_items:
-                st.markdown("**❓ 자료에 단서가 부족한 항목 (추가 정보 또는 직접 작성 필요)**")
-                for it in gap_items:
-                    st.markdown(f"- {it.get('label', '?')}")
-                st.caption(
-                    "💡 채팅으로 정보를 더 알려주시거나, 다운로드한 .hwpx에서 직접 채우세요."
-                )
+            st.markdown("### ❓ 자료에 단서가 부족해 초안이 생성되지 않은 항목")
+            for it in gap_items:
+                st.markdown(f"- {it.get('label', '?')}")
+            st.caption("💡 채팅으로 정보를 더 알려주시거나, 다운로드한 .hwpx에서 직접 채우세요.")

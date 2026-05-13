@@ -1,8 +1,12 @@
 """Central GraphState for the LangGraph form-fill pipeline."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from backend.app.hwpx.models import FormDoc
+
+DraftStatus = Literal["ok", "needs_review", "needs_info", "needs_check", "pii"]
 
 
 class MaterialBundle(BaseModel):
@@ -22,6 +26,8 @@ class DraftItem(BaseModel):
     text: str
     citations: list[str]
     locked: bool = False
+    status: DraftStatus = "ok"
+    is_pii: bool = False
 
 
 class GraphState(BaseModel):

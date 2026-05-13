@@ -33,8 +33,21 @@ def _make_form(*items: Item) -> FormDoc:
     )
 
 
-def _make_draft(item_id: str, text: str = "초안 내용입니다.", locked: bool = False) -> DraftItem:
-    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], locked=locked)
+def _make_draft(
+    item_id: str,
+    text: str = "초안 내용입니다.",
+    locked: bool = False,
+    status: str = "ok",
+    is_pii: bool = False,
+) -> DraftItem:
+    return DraftItem(
+        item_id=item_id,
+        text=text,
+        citations=["cv.pdf"],
+        locked=locked,
+        status=status,
+        is_pii=is_pii,
+    )
 
 
 def _make_state(
@@ -50,7 +63,7 @@ def _make_state(
 
 
 # ---------------------------------------------------------------------------
-# 1. ok verdict → text unchanged, locked unchanged (False)
+# 1. ok verdict → status=ok, text/locked unchanged
 # ---------------------------------------------------------------------------
 
 
@@ -70,7 +83,7 @@ class TestOkVerdict:
 
         assert result["drafts"][0].locked is False
 
-    def test_ok_text_unchanged(self):
+    def test_ok_text_unchanged_and_status_ok(self):
         form = _make_form(_make_item("item1"))
         original_text = "원본 내용입니다."
         draft = _make_draft("item1", text=original_text)
@@ -85,15 +98,16 @@ class TestOkVerdict:
             result = verify_drafts(state)
 
         assert result["drafts"][0].text == original_text
+        assert result["drafts"][0].status == "ok"
 
 
 # ---------------------------------------------------------------------------
-# 2. retry verdict → draft text modified with marker
+# 2. retry verdict → status="needs_review", text unchanged
 # ---------------------------------------------------------------------------
 
 
 class TestRetryVerdict:
-    def test_retry_adds_prefix_marker(self):
+    def test_retry_sets_status_and_leaves_text(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1", text="초안")
         state = _make_state(form, [draft])
@@ -106,7 +120,8 @@ class TestRetryVerdict:
 
             result = verify_drafts(state)
 
-        assert result["drafts"][0].text.startswith("[검토 필요]")
+        assert result["drafts"][0].status == "needs_review"
+        assert result["drafts"][0].text == "초안"
 
     def test_retry_locked_unchanged(self):
         form = _make_form(_make_item("item1"))
@@ -125,12 +140,12 @@ class TestRetryVerdict:
 
 
 # ---------------------------------------------------------------------------
-# 3. soft_fail verdict → draft text modified with [확인 필요]
+# 3. soft_fail verdict → status="needs_check", text unchanged
 # ---------------------------------------------------------------------------
 
 
 class TestSoftFailVerdict:
-    def test_soft_fail_adds_suffix_marker(self):
+    def test_soft_fail_sets_status_and_leaves_text(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1", text="초안")
         state = _make_state(form, [draft])
@@ -143,7 +158,8 @@ class TestSoftFailVerdict:
 
             result = verify_drafts(state)
 
-        assert "[확인 필요]" in result["drafts"][0].text
+        assert result["drafts"][0].status == "needs_check"
+        assert result["drafts"][0].text == "초안"
 
     def test_soft_fail_locked_unchanged(self):
         form = _make_form(_make_item("item1"))
@@ -162,12 +178,12 @@ class TestSoftFailVerdict:
 
 
 # ---------------------------------------------------------------------------
-# 4. Invalid Solar response → draft marked as [확인 필요]
+# 4. Invalid Solar response → status="needs_check"
 # ---------------------------------------------------------------------------
 
 
 class TestInvalidSolarResponse:
-    def test_solar_exception_marks_soft_fail(self):
+    def test_solar_exception_marks_needs_check(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1", text="초안")
         state = _make_state(form, [draft])
@@ -180,10 +196,10 @@ class TestInvalidSolarResponse:
 
             result = verify_drafts(state)
 
-        assert "[확인 필요]" in result["drafts"][0].text
+        assert result["drafts"][0].status == "needs_check"
         assert result["drafts"][0].locked is False
 
-    def test_unknown_verdict_marks_soft_fail(self):
+    def test_unknown_verdict_marks_needs_check(self):
         form = _make_form(_make_item("item1"))
         draft = _make_draft("item1", text="초안")
         state = _make_state(form, [draft])
@@ -196,7 +212,7 @@ class TestInvalidSolarResponse:
 
             result = verify_drafts(state)
 
-        assert "[확인 필요]" in result["drafts"][0].text
+        assert result["drafts"][0].status == "needs_check"
 
 
 # ---------------------------------------------------------------------------
@@ -299,12 +315,11 @@ class TestPlaceholderPassthrough:
 
         assert all(not d.locked for d in result["drafts"])
 
-    def test_placeholder_draft_passed_through_unchanged(self):
+    def test_needs_info_draft_passed_through_unchanged(self):
         form = _make_form(_make_item("item1"))
-        draft = _make_draft("item1", text="[추가 정보 필요] 항목 — 관련 정보를 알려주세요.")
+        draft = _make_draft("item1", text="", status="needs_info")
         state = _make_state(form, [draft])
 
-        # Solar should NOT be called for placeholder drafts
         with patch(
             "backend.app.graph.nodes.verifier._solar_complete",
             side_effect=AssertionError("should not call Solar"),
@@ -313,5 +328,23 @@ class TestPlaceholderPassthrough:
 
             result = verify_drafts(state)
 
-        assert result["drafts"][0].text == draft.text
+        assert result["drafts"][0].status == "needs_info"
+        assert result["drafts"][0].text == ""
         assert result["drafts"][0].locked is False
+
+    def test_pii_draft_passed_through_unchanged(self):
+        form = _make_form(_make_item("item1", "성명"))
+        draft = _make_draft("item1", text="홍길동", status="pii", is_pii=True)
+        state = _make_state(form, [draft])
+
+        with patch(
+            "backend.app.graph.nodes.verifier._solar_complete",
+            side_effect=AssertionError("should not call Solar for PII"),
+        ):
+            from backend.app.graph.nodes.verifier import verify_drafts
+
+            result = verify_drafts(state)
+
+        assert result["drafts"][0].status == "pii"
+        assert result["drafts"][0].text == "홍길동"
+        assert result["drafts"][0].is_pii is True

@@ -45,8 +45,21 @@ def _make_form(
     )
 
 
-def _make_draft(item_id: str, text: str = "작성된 내용입니다.", locked: bool = True) -> DraftItem:
-    return DraftItem(item_id=item_id, text=text, citations=["cv.pdf"], locked=locked)
+def _make_draft(
+    item_id: str,
+    text: str = "작성된 내용입니다.",
+    locked: bool = True,
+    status: str = "ok",
+    is_pii: bool = False,
+) -> DraftItem:
+    return DraftItem(
+        item_id=item_id,
+        text=text,
+        citations=["cv.pdf"],
+        locked=locked,
+        status=status,
+        is_pii=is_pii,
+    )
 
 
 def _make_state(
@@ -120,21 +133,21 @@ class TestReturnShape:
 
 
 # ---------------------------------------------------------------------------
-# 2. PII items always render as [본인 직접 입력] regardless of draft state
+# 2. PII items render the user-typed text when locked (no forced placeholder)
 # ---------------------------------------------------------------------------
 
 
-class TestPiiEnforcement:
-    def test_pii_item_always_gets_placeholder_text(self):
+class TestPiiRendering:
+    def test_pii_user_text_is_rendered_when_locked(self):
         pii_item = _make_item("pii1", "성명", is_pii=True)
         form = _make_form([pii_item])
-        # Even if someone sneaks a PII draft in, it should be overridden
-        state = _make_state(form, drafts=[])
+        pii_draft = _make_draft("pii1", text="홍길동", locked=True, status="pii", is_pii=True)
+        state = _make_state(form, [pii_draft])
 
-        captured_drafts = []
+        captured = []
 
         def spy_apply(src: bytes, drafts):
-            captured_drafts.extend(drafts)
+            captured.extend(drafts)
             return src
 
         form_bytes = _minimal_hwpx_bytes()
@@ -143,12 +156,53 @@ class TestPiiEnforcement:
 
             render_output(state, form_bytes)
 
-        pii_renderer_draft = next((d for d in captured_drafts if d.item_id == "pii1"), None)
-        assert pii_renderer_draft is not None
-        assert pii_renderer_draft.text == "[본인 직접 입력]"
-        assert pii_renderer_draft.is_pii is True
+        rd = next((d for d in captured if d.item_id == "pii1"), None)
+        assert rd is not None
+        assert rd.text == "홍길동"
+        assert rd.is_pii is True
 
-    def test_pii_text_appears_in_preview(self):
+    def test_pii_no_draft_is_skipped(self):
+        pii_item = _make_item("pii1", "성명", is_pii=True)
+        form = _make_form([pii_item])
+        state = _make_state(form, drafts=[])
+
+        captured = []
+
+        def spy_apply(src: bytes, drafts):
+            captured.extend(drafts)
+            return src
+
+        form_bytes = _minimal_hwpx_bytes()
+        with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
+            from backend.app.graph.nodes.renderer import render_output
+
+            render_output(state, form_bytes)
+
+        # No locked PII draft → nothing is written for this item.
+        assert all(d.item_id != "pii1" for d in captured)
+
+    def test_pii_unlocked_draft_is_skipped(self):
+        pii_item = _make_item("pii1", "성명", is_pii=True)
+        form = _make_form([pii_item])
+        pii_draft = _make_draft("pii1", text="홍길동", locked=False, status="pii", is_pii=True)
+        state = _make_state(form, [pii_draft])
+
+        captured = []
+
+        def spy_apply(src: bytes, drafts):
+            captured.extend(drafts)
+            return src
+
+        form_bytes = _minimal_hwpx_bytes()
+        with patch("backend.app.graph.nodes.renderer.apply_drafts", side_effect=spy_apply):
+            from backend.app.graph.nodes.renderer import render_output
+
+            render_output(state, form_bytes)
+
+        # Unlocked PII draft → not in output (default include_unlocked=False).
+        assert all(d.item_id != "pii1" for d in captured)
+
+    def test_preview_marks_unfilled_pii_item(self):
         pii_item = _make_item("pii1", "성명", is_pii=True)
         form = _make_form([pii_item])
         state = _make_state(form)
@@ -158,7 +212,8 @@ class TestPiiEnforcement:
 
         result = render_output(state, form_bytes)
 
-        assert "[본인 직접 입력]" in result["preview_md"]
+        assert "성명" in result["preview_md"]
+        assert "직접 입력 필요" in result["preview_md"]
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +306,7 @@ class TestPreviewMarkdown:
         result = render_output(state, form_bytes)
 
         assert "연구 결과" in result["preview_md"]
-        assert "(미작성)" in result["preview_md"]
+        assert "미작성" in result["preview_md"]
 
 
 # ---------------------------------------------------------------------------
@@ -331,12 +386,15 @@ class TestEmptyForm:
 
 
 class TestBothPiiAndRegularItems:
-    def test_pii_and_regular_both_in_apply_drafts(self):
+    def test_pii_and_regular_both_in_apply_drafts_when_locked(self):
         pii_item = _make_item("pii1", "성명", is_pii=True)
         regular_item = _make_item("item1", "연구 목표")
         form = _make_form([pii_item, regular_item])
-        draft = _make_draft("item1", text="연구 내용")
-        state = _make_state(form, [draft])
+        drafts = [
+            _make_draft("pii1", text="홍길동", locked=True, status="pii", is_pii=True),
+            _make_draft("item1", text="연구 내용", locked=True),
+        ]
+        state = _make_state(form, drafts)
 
         captured = []
 
@@ -357,7 +415,10 @@ class TestBothPiiAndRegularItems:
     def test_pii_draft_has_is_pii_true_flag(self):
         pii_item = _make_item("pii1", "연락처", is_pii=True)
         form = _make_form([pii_item])
-        state = _make_state(form, drafts=[])
+        pii_draft = _make_draft(
+            "pii1", text="010-1234-5678", locked=True, status="pii", is_pii=True
+        )
+        state = _make_state(form, [pii_draft])
 
         captured = []
 

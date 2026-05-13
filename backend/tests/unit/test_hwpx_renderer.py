@@ -17,18 +17,20 @@ def test_apply_drafts_inserts_text():
     assert any("새 본문 내용" in i.label for i in new_doc.items)
 
 
-def test_apply_drafts_pii_uses_placeholder():
+def test_apply_drafts_pii_writes_user_text():
+    """PII drafts now carry user-typed text (the upper-level renderer only
+    forwards locked PII drafts). The low-level apply_drafts must write that
+    text verbatim — no forced placeholder substitution."""
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
     target = next(it for it in doc.items if it.kind == "paragraph")
     out = apply_drafts(
         src,
-        [DraftItem(item_id=target.item_id, text="민감정보", is_pii=True)],
+        [DraftItem(item_id=target.item_id, text="홍길동", is_pii=True)],
     )
     new_doc = parse_hwpx(out)
     labels = [i.label for i in new_doc.items]
-    assert any("[본인 직접 입력]" in lbl for lbl in labels)
-    assert not any("민감정보" in lbl for lbl in labels)
+    assert any("홍길동" in lbl for lbl in labels)
 
 
 def test_apply_drafts_preserves_non_xml_members():
@@ -100,7 +102,7 @@ def test_apply_drafts_paragraph_routing_unaffected_by_tables():
     assert any(it.label == "연도" for it in new_doc.items if it.kind == "table_cell")
 
 
-def test_apply_drafts_cell_pii_writes_placeholder():
+def test_apply_drafts_cell_pii_writes_user_text():
     src = FIXTURE.read_bytes()
     doc = parse_hwpx(src)
     target = next(
@@ -110,11 +112,11 @@ def test_apply_drafts_cell_pii_writes_placeholder():
     )
     out = apply_drafts(
         src,
-        [DraftItem(item_id=target.item_id, text="민감정보", is_pii=True)],
+        [DraftItem(item_id=target.item_id, text="010-1234-5678", is_pii=True)],
     )
     new_doc = parse_hwpx(out)
     new_target = next(it for it in new_doc.items if it.item_id == target.item_id)
-    assert new_target.label == "[본인 직접 입력]"
+    assert new_target.label == "010-1234-5678"
 
 
 def test_apply_drafts_invalid_cell_id_is_no_op():
@@ -158,9 +160,7 @@ def test_apply_drafts_paragraph_multiline_preserves_label():
     target = next(it for it in doc.items if it.kind == "paragraph")
     original_label = target.label
 
-    out = apply_drafts(
-        src, [DraftItem(item_id=target.item_id, text="첫째 줄\n둘째 줄\n셋째 줄")]
-    )
+    out = apply_drafts(src, [DraftItem(item_id=target.item_id, text="첫째 줄\n둘째 줄\n셋째 줄")])
     new_doc = parse_hwpx(out)
     paragraph_labels = [it.label for it in new_doc.items if it.kind == "paragraph"]
     assert original_label in paragraph_labels

@@ -1,7 +1,12 @@
-"""Generator node — produce draft text for each non-PII, non-question ItemPlan.
+"""Generator node — produce draft text for each fillable ItemPlan.
 
-Applies output-guard retry: if scan() detects PII in the generated text, retries
-up to 2 more times; on persistent failure, marks text as "[확인 필요]".
+PII items get an empty DraftItem with status="pii" and is_pii=True — the LLM
+is never called for them, but the user can type their own value via the UI.
+Non-PII items with needs_question=True become status="needs_info" placeholders.
+output_guard catches PII leakage in LLM output and retries up to 2× more;
+persistent failure → status="needs_check" with empty text (so leaked PII does
+not reach the UI).
+
 Zero LangGraph imports per module purity rules.
 """
 
@@ -13,8 +18,6 @@ from backend.app.llm.prompts import build_generator_messages
 from backend.app.pii import scan
 
 _MAX_ATTEMPTS = 3
-_FALLBACK_TEXT = "[확인 필요]"
-_NEEDS_INFO_PREFIX = "[추가 정보 필요]"
 
 
 def _solar_complete(messages: list[dict]) -> object:
@@ -23,45 +26,54 @@ def _solar_complete(messages: list[dict]) -> object:
 
 
 def generate_drafts(state: GraphState) -> dict:
-    """Generate DraftItem for each eligible ItemPlan.
+    """Generate DraftItem for every fillable item.
 
-    Skips PII items (is_pii=True on the matching FormDoc item) and plans
-    where needs_question=True.  Returns {"drafts": list[DraftItem]}.
+    PII items get an empty draft (status="pii", is_pii=True); the user is
+    expected to type a value via the UI — the LLM never sees PII fields.
+    Non-PII items follow the existing plan→generate→guard flow.
+    Returns {"drafts": list[DraftItem]}.
     """
     if state.form_doc is None:
         return {"drafts": []}
 
     pii_item_ids = {item.item_id for item in state.form_doc.items if item.is_pii}
     non_fillable_ids = {item.item_id for item in state.form_doc.items if not item.fillable}
-    label_by_id = {item.item_id: item.label for item in state.form_doc.items}
     drafts: list[DraftItem] = []
 
     for plan in state.plans:
-        if plan.item_id in pii_item_ids:
-            continue
         if plan.item_id in non_fillable_ids:
             continue
 
-        if plan.needs_question:
-            # Best-effort placeholder so the user sees the item in the UI and
-            # can answer via chat or fill it in via the ✏ 수정 button.
-            question = plan.question or "관련 정보를 알려주세요."
-            label = label_by_id.get(plan.item_id, plan.item_id)
+        if plan.item_id in pii_item_ids:
             drafts.append(
                 DraftItem(
                     item_id=plan.item_id,
-                    text=f"{_NEEDS_INFO_PREFIX} {label} — {question}",
+                    text="",
                     citations=[],
+                    status="pii",
+                    is_pii=True,
                 )
             )
             continue
 
-        text, citations = _generate_with_guard(plan, state)
+        if plan.needs_question:
+            drafts.append(
+                DraftItem(
+                    item_id=plan.item_id,
+                    text="",
+                    citations=[],
+                    status="needs_info",
+                )
+            )
+            continue
+
+        text, citations, status = _generate_with_guard(plan, state)
         drafts.append(
             DraftItem(
                 item_id=plan.item_id,
                 text=text,
                 citations=citations,
+                status=status,
             )
         )
 
@@ -71,15 +83,18 @@ def generate_drafts(state: GraphState) -> dict:
 def _generate_with_guard(
     plan: ItemPlan,
     state: GraphState,
-) -> tuple[str, list[str]]:
-    """Call Solar and retry on PII detection, up to _MAX_ATTEMPTS total."""
+) -> tuple[str, list[str], str]:
+    """Call Solar and retry on PII detection, up to _MAX_ATTEMPTS total.
+
+    Returns (text, citations, status).
+    """
     messages = build_generator_messages(
         plan.model_dump(),
         state.materials.docs,
         state.form_doc,  # type: ignore[arg-type]
     )
 
-    for attempt in range(_MAX_ATTEMPTS):
+    for _ in range(_MAX_ATTEMPTS):
         try:
             response = _solar_complete(messages)
             if not isinstance(response, dict):
@@ -89,15 +104,10 @@ def _generate_with_guard(
                 text = response.get("text", "")
                 citations = response.get("citations", [])
         except Exception:
-            text = _FALLBACK_TEXT
-            citations = []
-            break
+            return "", [], "needs_check"
 
         clean, _ = scan(text)
         if clean:
-            return text, citations
+            return text, citations, "ok"
 
-        # PII detected — retry (messages already built; Solar will produce new output)
-
-    # All attempts exhausted with PII still present
-    return _FALLBACK_TEXT, []
+    return "", [], "needs_check"

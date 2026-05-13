@@ -175,12 +175,12 @@ class TestDraftItemFields:
 
 
 # ---------------------------------------------------------------------------
-# 3. PII items are skipped in drafts
+# 3. PII items get empty drafts with status="pii", no Solar call
 # ---------------------------------------------------------------------------
 
 
-class TestPiiItemsSkipped:
-    def test_pii_item_not_in_drafts(self):
+class TestPiiItemsGetEmptyDraft:
+    def test_pii_item_emits_empty_pii_draft(self):
         form = _make_form(_make_item("pii1", "성명", is_pii=True), _make_item("item1"))
         pii_plan = ItemPlan(
             item_id="pii1",
@@ -191,10 +191,14 @@ class TestPiiItemsSkipped:
         normal_plan = _make_plan("item1")
         state = _make_state(form, [pii_plan, normal_plan])
 
+        solar_calls: list = []
+
+        def _spy(messages):
+            solar_calls.append(messages)
+            return _CLEAN_RESPONSE
+
         with (
-            patch(
-                "backend.app.graph.nodes.generator._solar_complete", return_value=_CLEAN_RESPONSE
-            ),
+            patch("backend.app.graph.nodes.generator._solar_complete", side_effect=_spy),
             patch("backend.app.graph.nodes.generator.scan", side_effect=_scan_always_clean),
         ):
             from backend.app.graph.nodes.generator import generate_drafts
@@ -202,8 +206,18 @@ class TestPiiItemsSkipped:
             result = generate_drafts(state)
 
         ids = [d.item_id for d in result["drafts"]]
-        assert "pii1" not in ids
+        assert "pii1" in ids
         assert "item1" in ids
+
+        pii_draft = next(d for d in result["drafts"] if d.item_id == "pii1")
+        assert pii_draft.text == ""
+        assert pii_draft.citations == []
+        assert pii_draft.status == "pii"
+        assert pii_draft.is_pii is True
+        assert pii_draft.locked is False
+
+        # Solar must NOT have been called for the PII plan (only for item1).
+        assert len(solar_calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -212,11 +226,11 @@ class TestPiiItemsSkipped:
 
 
 class TestNeedsQuestionPlaceholder:
-    """Generator now emits a [추가 정보 필요] placeholder draft for
-    needs_question items so the user sees them in the UI manual-entry
-    list and the graph can proceed straight to verifier+renderer."""
+    """Generator emits an empty-text placeholder draft with status="needs_info"
+    for plans whose needs_question=True. Status flags are carried in the
+    status field, not embedded in text."""
 
-    def test_needs_question_item_gets_placeholder_draft(self):
+    def test_needs_question_item_gets_empty_needs_info_draft(self):
         form = _make_form(_make_item("q_item"), _make_item("item1"))
         plans = [
             _make_plan("q_item", needs_question=True, question="강점이 무엇인가요?"),
@@ -239,11 +253,11 @@ class TestNeedsQuestionPlaceholder:
         assert "item1" in ids
 
         q_draft = next(d for d in result["drafts"] if d.item_id == "q_item")
-        assert q_draft.text.startswith("[추가 정보 필요]")
-        assert "강점" in q_draft.text
+        assert q_draft.text == ""
+        assert q_draft.status == "needs_info"
         assert q_draft.citations == []
 
-    def test_needs_question_no_question_text_uses_default(self):
+    def test_needs_question_no_question_text_still_emits_needs_info(self):
         form = _make_form(_make_item("q_item"))
         plans = [_make_plan("q_item", needs_question=True, question=None)]
         state = _make_state(form, plans)
@@ -256,7 +270,8 @@ class TestNeedsQuestionPlaceholder:
             result = generate_drafts(state)
 
         assert len(result["drafts"]) == 1
-        assert result["drafts"][0].text.startswith("[추가 정보 필요]")
+        assert result["drafts"][0].status == "needs_info"
+        assert result["drafts"][0].text == ""
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +309,7 @@ class TestOutputGuardRetry:
 
 
 class TestFallbackAfterMaxRetries:
-    def test_all_pii_results_in_fallback_text(self):
+    def test_all_pii_results_in_empty_text_with_needs_check(self):
         form = _make_form(_make_item("item1"))
         state = _make_state(form, [_make_plan("item1")])
 
@@ -306,7 +321,9 @@ class TestFallbackAfterMaxRetries:
 
             result = generate_drafts(state)
 
-        assert result["drafts"][0].text == "[확인 필요]"
+        # leaked PII must NOT reach the UI — text is wiped and status flags it.
+        assert result["drafts"][0].text == ""
+        assert result["drafts"][0].status == "needs_check"
 
     def test_fallback_has_empty_citations(self):
         form = _make_form(_make_item("item1"))

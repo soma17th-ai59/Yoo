@@ -15,7 +15,7 @@ The killer feature is **양식 자동 채우기** (form auto-fill) — *not* gen
 
 ## Hard rules (spec §7 — non-negotiable)
 1. **Never send PII to the LLM.** All material text passes through `pii.regex_masker` → `pii.presidio_masker` → `pii.mask_all` *before* any Solar call. Verify with the spy in `tests/unit/test_node_material_ingestor.py`.
-2. **Never auto-fill PII form fields.** Items whose `label` contains 성명/주민등록번호/연락처/주소/계좌/학번/사번/이메일/카드/외국인등록번호 must be flagged `is_pii=True` by `pii.form_detector`. The Renderer writes `[본인 직접 입력]`; the Generator skips them entirely.
+2. **Never auto-fill PII form fields via the LLM.** Items whose `label` contains 성명/주민등록번호/연락처/주소/계좌/학번/사번/이메일/카드/외국인등록번호 must be flagged `is_pii=True` by `pii.form_detector`. The Generator emits an *empty* `DraftItem(status="pii", is_pii=True)` for these — Solar is never called for them. The user types their value via the UI (`PUT /drafts`) and the Renderer writes that typed text. `item-chat` rejects PII items (LLM path). Net invariant: PII text **never** appears in any LLM prompt — only in the user's browser, in-memory session state, and the final .hwpx.
 3. **Memory-only sessions.** No disk persistence of user files, materials, or chat history. `SessionStore` is an in-memory dict with TTL. The only files that may touch disk are `tests/fixtures/`.
 4. **Evidence-only generation.** Generator must emit `{text, citations[]}` with citations referencing material IDs. Verifier rejects any draft with un-cited claims.
 5. **Output guard catches regressions.** `pii.output_guard` scans Generator output for jumin/account/card/phone/email patterns; on hit, retry up to 2× then mark `[확인 필요]`.

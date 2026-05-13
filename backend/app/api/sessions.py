@@ -119,11 +119,6 @@ async def apply_item(session_id: str, payload: ItemIdRequest):
     item = next((it for it in state.form_doc.items if it.item_id == payload.item_id), None)
     if item is None:
         raise HTTPException(status_code=404, detail=f"item 미존재: {payload.item_id}")
-    if item.is_pii:
-        raise HTTPException(
-            status_code=400,
-            detail="PII 항목은 항상 [본인 직접 입력]으로 비워두며 적용 대상이 아닙니다.",
-        )
     new_state, updated = _toggle_locked(state, payload.item_id, True)
     if updated is None:
         raise HTTPException(status_code=404, detail=f"draft 미존재: {payload.item_id}")
@@ -225,7 +220,7 @@ async def item_chat(session_id: str, payload: ItemChatRequest):
     if item.is_pii:
         raise HTTPException(
             status_code=400,
-            detail="PII 항목은 [본인 직접 입력]으로 비워두며 대화 작성을 지원하지 않습니다.",
+            detail="PII 항목은 LLM 경로를 거치지 않습니다. ✏ 수정으로 직접 입력해 주세요.",
         )
 
     target = next((d for d in state.drafts if d.item_id == item_id), None)

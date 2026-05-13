@@ -1,11 +1,13 @@
-"""Verifier node — review each draft and apply verdict markers.
+"""Verifier node — review each draft and set its status field.
 
-V1 simplified approach (no re-generation within this node):
-  ok        → text unchanged, locked unchanged
-  retry     → prepend "[검토 필요] " to text
-  soft_fail → append " [확인 필요]" to text
-  invalid   → treat as soft_fail
+Verdict → status mapping:
+  ok        → status="ok"
+  retry     → status="needs_review"
+  soft_fail → status="needs_check"
+  invalid   → treated as soft_fail
 
+Drafts with status in {"pii", "needs_info", "needs_check"} are passed through
+unchanged — the LLM has no claims to verify for them.
 locked is never set here; it is set only when the user presses ✓ apply.
 Zero LangGraph imports per module purity rules.
 """
@@ -16,10 +18,13 @@ from backend.app.graph.state import DraftItem, GraphState
 from backend.app.llm import solar as _solar_mod
 from backend.app.llm.prompts import build_verifier_messages
 
-_RETRY_PREFIX = "[검토 필요] "
-_SOFT_FAIL_SUFFIX = " [확인 필요]"
-_NEEDS_INFO_PREFIX = "[추가 정보 필요]"
 _VALID_VERDICTS = frozenset(["ok", "retry", "soft_fail"])
+_PASSTHROUGH_STATUSES = frozenset(["pii", "needs_info", "needs_check"])
+_VERDICT_TO_STATUS = {
+    "ok": "ok",
+    "retry": "needs_review",
+    "soft_fail": "needs_check",
+}
 
 
 def _solar_complete(messages: list[dict]) -> object:
@@ -28,9 +33,10 @@ def _solar_complete(messages: list[dict]) -> object:
 
 
 def verify_drafts(state: GraphState) -> dict:
-    """Verify every draft and return an updated draft list with text markers applied.
+    """Verify every draft and return updated list with status field set.
 
-    Returns {"drafts": list[DraftItem]}. locked is never mutated here.
+    Returns {"drafts": list[DraftItem]}. locked and text are never mutated;
+    only status changes.
     """
     if state.form_doc is None:
         return {"drafts": list(state.drafts)}
@@ -38,8 +44,7 @@ def verify_drafts(state: GraphState) -> dict:
     updated_drafts: list[DraftItem] = []
 
     for draft in state.drafts:
-        # Placeholder drafts carry no LLM-generated claims; pass through unchanged.
-        if draft.text.startswith(_NEEDS_INFO_PREFIX):
+        if draft.status in _PASSTHROUGH_STATUSES:
             updated_drafts.append(draft)
             continue
 
@@ -49,7 +54,7 @@ def verify_drafts(state: GraphState) -> dict:
 
 
 def _verify_single(draft: DraftItem, state: GraphState) -> DraftItem:
-    """Call Solar to verify one draft and apply verdict transformation."""
+    """Call Solar to verify one draft and apply verdict → status."""
     messages = build_verifier_messages(
         draft.model_dump(),
         state.form_doc,  # type: ignore[arg-type]
@@ -67,9 +72,4 @@ def _verify_single(draft: DraftItem, state: GraphState) -> DraftItem:
     except Exception:
         verdict = "soft_fail"
 
-    if verdict == "ok":
-        return draft
-    elif verdict == "retry":
-        return draft.model_copy(update={"text": _RETRY_PREFIX + draft.text})
-    else:  # soft_fail or fallback
-        return draft.model_copy(update={"text": draft.text + _SOFT_FAIL_SUFFIX})
+    return draft.model_copy(update={"status": _VERDICT_TO_STATUS[verdict]})

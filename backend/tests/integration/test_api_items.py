@@ -42,7 +42,14 @@ async def session_with_drafts(client: TestClient):
         form_doc=form,
         drafts=[
             DraftItem(item_id="it1", text="안녕하세요", citations=[], locked=False),
-            DraftItem(item_id="pii1", text="[본인 직접 입력]", citations=[], locked=False),
+            DraftItem(
+                item_id="pii1",
+                text="",
+                citations=[],
+                locked=False,
+                status="pii",
+                is_pii=True,
+            ),
         ],
     )
     await store.save_state(sid, state)
@@ -66,10 +73,20 @@ def test_unlock_sets_locked_false(client: TestClient, session_with_drafts):
     assert r.json()["locked"] is False
 
 
-def test_apply_pii_returns_400(client: TestClient, session_with_drafts):
+def test_apply_pii_now_allowed(client: TestClient, session_with_drafts):
+    """PII items are user-fillable. apply locks the user-typed text."""
     sid = session_with_drafts
+    # User types their PII via PUT /drafts first.
+    put_r = client.put(
+        f"/api/sessions/{sid}/drafts",
+        json={"item_id": "pii1", "text": "홍길동"},
+    )
+    assert put_r.status_code == 200
+
     r = client.post(f"/api/sessions/{sid}/items/apply", json={"item_id": "pii1"})
-    assert r.status_code == 400
+    assert r.status_code == 200
+    assert r.json()["locked"] is True
+    assert r.json()["text"] == "홍길동"
 
 
 def test_apply_unknown_item_returns_404(client: TestClient, session_with_drafts):

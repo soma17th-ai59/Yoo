@@ -11,7 +11,6 @@ from pydantic import BaseModel
 NS_HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 _HP = "{" + NS_HP + "}"
 
-_PII_PLACEHOLDER = "[본인 직접 입력]"
 _CELL_KEY_RE = re.compile(r"^tbl(\d+):r(\d+)c(\d+)$")
 
 
@@ -156,22 +155,21 @@ def _strip_layout_cache(paragraph) -> None:
         paragraph.remove(lsa)
 
 
-def _set_paragraph_text(paragraph, text: str, is_pii: bool) -> None:
+def _set_paragraph_text(paragraph, text: str) -> None:
     t_elements = _direct_text_elements(paragraph)
     if not t_elements:
         return
-    replacement = _PII_PLACEHOLDER if is_pii else text
-    t_elements[0].text = replacement
+    t_elements[0].text = text
     for t in t_elements[1:]:
         t.text = ""
     _strip_layout_cache(paragraph)
 
 
 def _write_text_into_paragraph(paragraph, draft: DraftItem) -> None:
-    raw = _PII_PLACEHOLDER if draft.is_pii else draft.text
+    raw = draft.text
     lines = raw.split("\n") if raw else [""]
 
-    _set_paragraph_text(paragraph, lines[0], draft.is_pii)
+    _set_paragraph_text(paragraph, lines[0])
 
     if len(lines) <= 1:
         return
@@ -185,7 +183,7 @@ def _write_text_into_paragraph(paragraph, draft: DraftItem) -> None:
     my_idx = siblings.index(paragraph)
     for offset, line in enumerate(lines[1:], start=1):
         cloned = copy.deepcopy(paragraph)
-        _set_paragraph_text(cloned, line, draft.is_pii)
+        _set_paragraph_text(cloned, line)
         parent.insert(my_idx + offset, cloned)
 
 
@@ -195,7 +193,7 @@ def _insert_draft_after_label(label_paragraph, draft: DraftItem) -> None:
     table-cell rule (write to the adjacent slot, never overwrite the label) by
     leaving the label paragraph intact and inserting the draft as new sibling
     paragraph(s) immediately after it — one per "\\n"-separated line."""
-    raw = _PII_PLACEHOLDER if draft.is_pii else draft.text
+    raw = draft.text
     lines = raw.split("\n") if raw else [""]
 
     parent = label_paragraph.getparent()
@@ -204,5 +202,5 @@ def _insert_draft_after_label(label_paragraph, draft: DraftItem) -> None:
     base_idx = list(parent).index(label_paragraph)
     for offset, line in enumerate(lines, start=1):
         cloned = copy.deepcopy(label_paragraph)
-        _set_paragraph_text(cloned, line, draft.is_pii)
+        _set_paragraph_text(cloned, line)
         parent.insert(base_idx + offset, cloned)
