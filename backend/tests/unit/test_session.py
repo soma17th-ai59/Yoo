@@ -115,6 +115,33 @@ async def test_put_rendered_bytes():
     assert session.rendered_bytes == rendered
 
 
+async def test_updated_at_advances_on_mutation():
+    store = _make_store()
+    sid = await store.create()
+    session = await store.get(sid)
+    assert session is not None
+    initial_updated_at = session.updated_at
+
+    await asyncio.sleep(0.01)
+    await store.put_form_bytes(sid, b"form", "f.hwpx")
+    session = await store.get(sid)
+    assert session is not None
+    assert session.updated_at > initial_updated_at
+    assert session.form_filename == "f.hwpx"
+
+
+async def test_list_sessions_returns_most_recent_first():
+    store = _make_store()
+    first = await store.create()
+    second = await store.create()
+
+    await asyncio.sleep(0.01)
+    await store.put_material_file(first, "cv.txt", b"data")
+
+    sessions = store.list_sessions()
+    assert [session.session_id for session in sessions] == [first, second]
+
+
 # ---------------------------------------------------------------------------
 # 8. delete removes the session
 # ---------------------------------------------------------------------------

@@ -19,6 +19,20 @@ from backend.app.session import store
 router = APIRouter()
 
 
+def _session_summary(session) -> dict:
+    return {
+        "session_id": session.session_id,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+        "has_form": session.form_bytes is not None,
+        "uploaded_form": session.form_filename,
+        "uploaded_materials": [filename for filename, _ in session.material_files],
+        "material_count": len(session.material_files),
+        "has_rendered": session.rendered_bytes is not None,
+        "has_state": session.graph_state is not None,
+    }
+
+
 def _to_jsonable(obj):
     if hasattr(obj, "model_dump"):
         return obj.model_dump()
@@ -169,6 +183,26 @@ async def create_session():
     return {"session_id": session_id}
 
 
+@router.get("/api/sessions")
+async def list_sessions():
+    return {"sessions": [_session_summary(session) for session in store.list_sessions()]}
+
+
+@router.get("/api/sessions/{session_id}")
+async def get_session(session_id: str):
+    session = await store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    state = session.graph_state
+    return {
+        **_session_summary(session),
+        "form_doc": state.form_doc.model_dump() if state and state.form_doc else None,
+        "drafts": [draft.model_dump() for draft in state.drafts] if state else [],
+        "history": list(state.history) if state else [],
+    }
+
+
 @router.put("/api/sessions/{session_id}/drafts")
 async def update_draft(session_id: str, payload: DraftUpdate):
     """Replace one draft's text. Locked drafts return 409 — unlock first."""
@@ -298,18 +332,7 @@ async def download_output(session_id: str, include_unlocked: bool = False):
 @router.get("/api/sessions/_debug/list")
 async def session_list():
     """Diagnostic: list current session IDs and their TTL state."""
-    return {
-        "sessions": [
-            {
-                "session_id": sid,
-                "has_form": s.form_bytes is not None,
-                "material_count": len(s.material_files),
-                "has_rendered": s.rendered_bytes is not None,
-                "has_state": s.graph_state is not None,
-            }
-            for sid, s in store._sessions.items()
-        ]
-    }
+    return {"sessions": [_session_summary(session) for session in store.list_sessions()]}
 
 
 @router.get("/api/sessions/{session_id}/debug")

@@ -36,7 +36,7 @@ async def upload_file(
         raise HTTPException(status_code=413, detail="파일이 20MB 제한을 초과합니다.")
 
     if kind == "form":
-        await store.put_form_bytes(session_id, data)
+        await store.put_form_bytes(session_id, data, file.filename or "unknown")
     else:
         await store.put_material_file(session_id, file.filename or "unknown", data)
 

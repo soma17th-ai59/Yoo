@@ -76,3 +76,60 @@ def test_chat_masks_pii_before_solar(client: TestClient, session_id):
     assert "901010-1234567" not in last_user_msg["content"], (
         "PII (jumin) leaked to Solar — mask_all not applied"
     )
+
+
+def test_list_sessions_returns_metadata(client: TestClient, session_id):
+    client.post(
+        "/api/upload",
+        data={"session_id": session_id, "kind": "form"},
+        files={"file": ("sample.hwpx", b"form-bytes", "application/octet-stream")},
+    )
+    client.post(
+        "/api/upload",
+        data={"session_id": session_id, "kind": "material"},
+        files={"file": ("cv.txt", b"cv-bytes", "text/plain")},
+    )
+
+    r = client.get("/api/sessions")
+    assert r.status_code == 200
+    payload = r.json()
+    session = next(item for item in payload["sessions"] if item["session_id"] == session_id)
+    assert session["has_form"] is True
+    assert session["uploaded_form"] == "sample.hwpx"
+    assert session["uploaded_materials"] == ["cv.txt"]
+    assert session["material_count"] == 1
+
+
+def test_get_session_returns_restorable_state(client: TestClient, session_id):
+    client.post(
+        "/api/upload",
+        data={"session_id": session_id, "kind": "form"},
+        files={"file": ("sample.hwpx", b"form-bytes", "application/octet-stream")},
+    )
+    with patch(
+        "backend.app.api.chat._solar_complete", return_value="안녕하세요. 무엇을 도와드릴까요?"
+    ):
+        client.post("/api/chat", json={"session_id": session_id, "message": "안녕"})
+
+    session = store._sessions[session_id]
+    assert session.graph_state is not None
+    session.graph_state = session.graph_state.model_copy(
+        update={
+            "drafts": [
+                {
+                    "item_id": "s0:p0",
+                    "text": "초안 본문",
+                    "citations": ["m1"],
+                    "locked": False,
+                }
+            ]
+        }
+    )
+
+    r = client.get(f"/api/sessions/{session_id}")
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["session_id"] == session_id
+    assert payload["uploaded_form"] == "sample.hwpx"
+    assert payload["history"][0]["role"] == "user"
+    assert payload["drafts"][0]["text"] == "초안 본문"
